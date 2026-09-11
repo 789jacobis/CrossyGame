@@ -1,0 +1,87 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7fd446007ac5477a826346da89584806, type: 3}
+  m_Name: DifficultyConfig
+  m_EditorClassIdentifier: Assembly-CSharp::DifficultyConfig
+  tiers:
+  - minimumScore: 0
+    roadVehicleSpeedMultiplier: 1
+    logSpeedMultiplier: 1
+    trainSpeedMultiplier: 1
+    trainWarningDurationMultiplier: 1
+    grassChance: 0.4
+    riverChance: 0.15
+    railChance: 0.08
+    maxConsecutiveRoads: 2
+    maxConsecutiveGrass: 3
+    maxConsecutiveRivers: 2
+    maxConsecutiveRails: 1
+  - minimumScore: 10
+    roadVehicleSpeedMultiplier: 1.15
+    logSpeedMultiplier: 1.1
+    trainSpeedMultiplier: 1.1
+    trainWarningDurationMultiplier: 0.95
+    grassChance: 0.35
+    riverChance: 0.2
+    railChance: 0.1
+    maxConsecutiveRoads: 2
+    maxConsecutiveGrass: 3
+    maxConsecutiveRivers: 2
+    maxConsecutiveRails: 1
+  - minimumScore: 20
+    roadVehicleSpeedMultiplier: 1.3
+    logSpeedMultiplier: 1.2
+    trainSpeedMultiplier: 1.2
+    trainWarningDurationMultiplier: 0.9
+    grassChance: 0.3
+    riverChance: 0.25
+    railChance: 0.12
+    maxConsecutiveRoads: 3
+    maxConsecutiveGrass: 2
+    maxConsecutiveRivers: 2
+    maxConsecutiveRails: 1
+  - minimumScore: 30
+    roadVehicleSpeedMultiplier: 1.4
+    logSpeedMultiplier: 1.3
+    trainSpeedMultiplier: 1.3
+    trainWarningDurationMultiplier: 0.85
+    grassChance: 0.25
+    riverChance: 0.3
+    railChance: 0.15
+    maxConsecutiveRoads: 3
+    maxConsecutiveGrass: 2
+    maxConsecutiveRivers: 2
+    maxConsecutiveRails: 2
+  - minimumScore: 40
+    roadVehicleSpeedMultiplier: 1.5
+    logSpeedMultiplier: 1.4
+    trainSpeedMultiplier: 1.4
+    trainWarningDurationMultiplier: 0.8
+    grassChance: 0.2
+    riverChance: 0.3
+    railChance: 0.2
+    maxConsecutiveRoads: 3
+    maxConsecutiveGrass: 2
+    maxConsecutiveRivers: 3
+    maxConsecutiveRails: 3
+  - minimumScore: 50
+    roadVehicleSpeedMultiplier: 1.6
+    logSpeedMultiplier: 1.5
+    trainSpeedMultiplier: 1.5
+    trainWarningDurationMultiplier: 0.75
+    grassChance: 0.15
+    riverChance: 0.3
+    railChance: 0.25
+    maxConsecutiveRoads: 4
+    maxConsecutiveGrass: 2
+    maxConsecutiveRivers: 4
+    maxConsecutiveRails: 4

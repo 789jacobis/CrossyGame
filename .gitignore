@@ -1,0 +1,49 @@
+# Unity generated folders
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Local and generated builds
+/[Bb]uild/
+/[Bb]uilds/
+
+# Local work files
+/tmp/
+
+# IDE and editor files
+/.vs/
+/.vscode/
+/.idea/
+*.csproj
+*.sln
+*.slnx
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.opendb
+*.VC.db
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Unity crash and diagnostic files
+sysinfo.txt
+crashlytics-build.properties
+
+# Addressables generated data
+/ServerData/
+/Assets/StreamingAssets/aa.meta
+/Assets/StreamingAssets/aa/
+
+# Temporary auto-generated assets
+Assets/AssetStoreTools*
+
