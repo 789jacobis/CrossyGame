@@ -2,6 +2,8 @@
 /[Ll]ibrary/
 /[Tt]emp/
 /[Oo]bj/
+**/[Bb]in/
+**/[Oo]bj/
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 /[Mm]emoryCaptures/
@@ -21,6 +23,8 @@
 *.csproj
 *.sln
 *.slnx
+!CrossyRoadServer/**/*.csproj
+!CrossyRoadServer/*.sln
 *.suo
 *.user
 *.userprefs

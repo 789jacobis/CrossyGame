@@ -6,7 +6,7 @@
 
 **[在 itch.io 遊玩 Cross The Road](https://789jacobis.itch.io/cross-the-road)**
 
-目前已發布經過瀏覽器與無痕模式驗證的 Unity Web Release Build。遊戲仍會持續改善後端驗證、測試與作品集文件。
+目前已發布經過一般與無痕瀏覽器驗證的 Unity Web Release Build，並完成 Cloud Code 成績驗證與排行榜寫入保護。
 
 ## 遊戲畫面
 
@@ -20,20 +20,6 @@
   <img src="docs/images/gameplay.png" alt="公路、河流與浮木遊戲畫面" width="49%">
   <img src="docs/images/leaderboard.png" alt="UGS 線上排行榜" width="49%">
 </p>
-
-## 一開始的專案目標
-
-這個專案一開始不是以做出大型商業遊戲為目標，而是要完成一個「小而完整、可公開遊玩、能用於遊戲工程師面試」的作品集，重點包括：
-
-- 使用 Unity 與 C# 建立完整、可反覆遊玩的遊戲循環。
-- 將成品輸出成 Web 版本，讓使用者直接在瀏覽器遊玩。
-- 練習後端與線上服務，包括玩家身分、名稱、成績提交與排行榜。
-- 展示資料驅動設計、物件池、程序生成、非同步服務整合與基本防作弊思維。
-- 保持架構可替換，日後學習 AWS 時能逐步遷移，而不必重寫整個 Unity 客戶端。
-
-最初規劃使用 ASP.NET Core Web API、PostgreSQL、Entity Framework Core 與管理後台自行建置後端。為了先完成可展示的端到端版本，目前改以 Unity Gaming Services（UGS）實作匿名登入、玩家名稱與排行榜；自建後端仍保留為後續學習與擴充方向。
-
-更完整的原始規劃可參考 [`crossy-game-project-handoff.md`](crossy-game-project-handoff.md)。
 
 ## 目前完成的功能
 
@@ -63,7 +49,10 @@
 - Unity Leaderboards 全球最高分排行榜。
 - 顯示最高分玩家；玩家不在前段名次時，以省略列加上自己的排名。
 - 同分玩家顯示並列名次。
-- 離線時保留待上傳最高分，服務恢復後再次提交。
+- 每局開始時由 Cloud Code 簽發一次性 `RunId`。
+- 遊戲結束後由 Cloud Code 檢查玩家、`RunId`、提交次數、分數範圍、執行時間與得分速度。
+- 通過驗證後，僅由 Cloud Code 使用服務權杖寫入排行榜。
+- Access Control 禁止玩家端直接寫入 Leaderboards，同時保留排行榜讀取能力。
 
 ### 發布狀態
 
@@ -88,6 +77,8 @@
 - Unity Input System
 - TextMesh Pro
 - Unity Gaming Services：Authentication、Player Names、Leaderboards
+- Unity Cloud Code C# Modules、Cloud Save Protected Data、Access Control
+- .NET 9（Cloud Code 模組開發與測試）
 - WebGL Input（處理瀏覽器中的 IME／中文輸入）
 - 最終平台：Unity Web Build
 
@@ -109,14 +100,21 @@ flowchart LR
 
     Online --> Auth[UGS Authentication]
     Online --> Names[UGS Player Names]
-    Online --> Board[UGS Leaderboards]
+    Online --> CloudCode[UGS Cloud Code C# Module]
+    Online -->|讀取排名| Board[UGS Leaderboards]
+    Online -.->|玩家直接寫入：Access Control 拒絕| Board
+
+    CloudCode --> Runs[(Cloud Save Protected Run)]
+    CloudCode -->|驗證後以 Service Token 寫入| Board
 
     Auth --> Identity[(匿名 Player ID)]
     Names --> Profile[(玩家顯示名稱)]
     Board --> Ranking[(全球最高分排行榜)]
 ```
 
-目前由 Unity 客戶端透過 UGS SDK 直接完成匿名登入、玩家名稱與排行榜讀寫；本機最高分、音效設定及待上傳成績則保存在瀏覽器的 PlayerPrefs。下一階段會在客戶端與排行榜之間加入 Cloud Code，以一次性 `RunId`、遊戲時間與分數合理性檢查保護成績提交。
+Unity 客戶端直接完成匿名登入、玩家名稱與排行榜讀取，但不能直接寫入分數。每局開始與結束都會呼叫 Cloud Code；模組將執行中的 `RunId` 保存在 Cloud Save Protected Data，驗證通過後才以服務權杖更新排行榜。本機最高分與音效設定保存在瀏覽器的 PlayerPrefs。
+
+詳細元件與成績提交流程請參考 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
 
 ## 專案結構
 
@@ -130,6 +128,8 @@ Assets/
   Prefabs/          遊戲物件 Prefab
   Scenes/           遊戲場景
   Scripts/          遊戲、UI、音效與線上服務程式碼
+  CloudCode/        模組參照、產生的客戶端綁定與 Access Control 規則
+CrossyRoadServer/   Cloud Code C# 模組與測試專案
 Packages/           Unity 套件清單與鎖定檔
 ProjectSettings/    Unity 專案設定
 ```
@@ -145,7 +145,7 @@ ProjectSettings/    Unity 專案設定
 5. 開啟 `Assets/Scenes/SampleScene.unity`。
 6. 按下 Play 測試遊戲。
 
-線上功能需要專案連結至對應的 Unity Cloud Project，並在 UGS Dashboard 建立 ID 為 `global_high_scores` 的 Leaderboard。沒有可用的 UGS 環境時，核心遊戲仍可離線執行，但線上名稱與排行榜功能會不可用。
+線上功能需要專案連結至對應的 Unity Cloud Project，並在 UGS Dashboard 建立 ID 為 `global_high_scores` 的 Leaderboard。`CrossyRoadServer` Cloud Code 模組與 `CrossyRoadAccessControl.ac` 也必須部署到相同環境。沒有可用的 UGS 環境時，核心遊戲仍可執行，但線上名稱、伺服器驗證與排行榜功能會不可用。
 
 ## 建置 Web 版本
 
@@ -153,41 +153,26 @@ ProjectSettings/    Unity 專案設定
 2. 選擇 `Web` 並切換平台。
 3. 確認 `Assets/Scenes/SampleScene.unity` 位於 Scene List。
 4. Player Settings 的預設 Canvas 建議使用 `960 × 540`。
-5. 按下 Build，輸出到被 Git 忽略的 `Builds/` 資料夾。
-6. 使用本機 HTTP server 或網站平台提供服務；Web Build 不能直接以 `file://` 正確執行。
+5. 關閉 Development Build，將 Code Optimization 設為 Runtime Speed。
+6. 按下 Build，輸出到被 Git 忽略的 `Builds/Release/` 資料夾。
+7. 將 `Release` 內的內容壓成 ZIP，確保 `index.html` 位於 ZIP 根目錄，再上傳至 itch.io。
+8. 使用本機 HTTP server 或網站平台提供服務；Web Build 不能直接以 `file://` 正確執行。
 
 ## 後端取捨與安全性
 
-目前 Unity 客戶端直接使用 UGS SDK 完成匿名驗證、名稱與排行榜，因此 UGS 已經是現階段的託管後端。不過，客戶端提交的分數仍可能被修改，現在的版本不等同於完整的伺服器權威防作弊系統。
+目前的排行榜採用伺服器驗證流程：
 
-下一階段預計加入 UGS Cloud Code（C#）：
+1. `StartRun` 建立隨機且一次性的 `RunId`，並將開始時間與使用狀態寫入 Protected Data。
+2. `SubmitRunScore` 驗證登入玩家、分數範圍、`RunId`、是否重複提交、最長遊戲時間及最高合理得分速度。
+3. Cloud Code 使用 Service Token 寫入 `global_high_scores`。
+4. Access Control 封鎖 `Player` 對 Leaderboards 的所有 `Write`，但允許讀取。
 
-1. 由伺服器建立一次性的 `RunId`。
-2. 記錄開始時間、遊戲版本與必要規則。
-3. 結束時檢查 `RunId`、耗時與分數合理性。
-4. 僅由伺服器將通過驗證的結果寫入排行榜。
-
-這項設計會在 Unity 端包一層後端介面，避免遊戲邏輯直接依賴特定供應商。
-
-## 未來 AWS 遷移方向
-
-目前使用 UGS 不會阻礙之後學習 AWS。可以分階段替換：
-
-- Unity Web Build：Amazon S3 + CloudFront。
-- Cloud Code／遊戲 API：API Gateway + AWS Lambda（C#）。
-- 排行榜與遊戲紀錄：DynamoDB，或依查詢需求使用 PostgreSQL。
-- 玩家驗證：需要正式帳號與跨裝置登入時再評估 Amazon Cognito。
-
-先保留統一的客戶端服務介面，就能讓 UGS 與 AWS 實作在遷移期間並存，逐項驗證後再切換。
+此設計已實際驗證：玩家端直接呼叫 Leaderboards 寫入會收到 `Access has been restricted`，正常遊戲則能由伺服器驗證並提交。它能阻擋直接偽造成績與重放同一局，但仍不是完整的伺服器權威模擬；若要進一步提高競技安全性，可增加事件紀錄、速率限制、異常偵測與人工稽核。
 
 ## 下一步
 
-- 加入 Cloud Code 成績驗證與一次性 `RunId`。
-- 增加服務層介面與測試替身，降低 UGS 耦合。
-- 補齊展示影片與架構圖。
-- 加入自動化測試與持續整合流程。
-- 將已確認可公開使用的美術、字型、音樂與音效來源整理成授權清單。
-
-## 資產與授權提醒
-
-本 repository 尚未宣告通用的開源授權。專案中的字型、音樂、音效與美術可能各自受不同授權條款約束；公開散布或再利用前，請逐一確認其來源與授權範圍。
+- 為 `StartRun`、`SubmitRunScore` 與驗證規則補齊單元測試。
+- 增加服務層介面與測試替身，降低 Unity 客戶端與 UGS 的耦合。
+- 建立 GitHub Actions，檢查 Cloud Code build/test 與 Unity 專案基本品質。
+- 補上短版遊戲展示影片。
+- 視需求加入提交速率限制、異常紀錄與排行榜管理工具。

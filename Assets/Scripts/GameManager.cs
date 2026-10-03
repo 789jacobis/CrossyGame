@@ -305,6 +305,11 @@ public sealed class GameManager : MonoBehaviour
         Time.timeScale = 1f;
         GameAudioManager.Instance?.SetTrainPassSoundEnabled(true);
 
+        if (OnlineServicesManager.Instance != null)
+        {
+            _ = OnlineServicesManager.Instance.BeginRunAsync();
+        }
+
         if (pauseButton != null)
         {
             pauseButton.gameObject.SetActive(true);
@@ -342,7 +347,7 @@ public sealed class GameManager : MonoBehaviour
             if (OnlineServicesManager.Instance != null)
             {
                 _ = OnlineServicesManager.Instance
-                    .SubmitBestScoreAsync(scoreManager.HighScore);
+                    .SubmitRunScoreAsync(scoreManager.CurrentScore);
             }
         }
 

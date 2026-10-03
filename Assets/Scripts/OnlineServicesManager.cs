@@ -1,8 +1,8 @@
 using System;
 using System.Threading.Tasks;
 using Unity.Services.Authentication;
+using Unity.Services.CloudCode.GeneratedBindings;
 using Unity.Services.Core;
-using Unity.Services.Leaderboards;
 using UnityEngine;
 
 public enum OnlineServicesState
@@ -16,13 +16,13 @@ public enum OnlineServicesState
 [DisallowMultipleComponent]
 public sealed class OnlineServicesManager : MonoBehaviour
 {
-    private const string LeaderboardId = "global_high_scores";
     private const string LocalHighScoreKey = "HighScore";
-    private const string PendingScoreKey =
-        "leaderboard_pending_best_score";
 
     private Task initializationTask;
-    private bool isSubmittingScore;
+    private Task<string> activeRunTask;
+    private MyModuleBindings cloudCodeModule;
+    private string activeRunId = string.Empty;
+    private bool isSubmittingRun;
 
     public static OnlineServicesManager Instance { get; private set; }
 
@@ -63,14 +63,8 @@ public sealed class OnlineServicesManager : MonoBehaviour
         return initializationTask;
     }
 
-    public async Task<bool> SubmitBestScoreAsync(int score)
+    public async Task<bool> BeginRunAsync()
     {
-        if (score <= 0)
-        {
-            return false;
-        }
-
-        SavePendingScore(score);
         await InitializeAsync();
 
         if (!IsReady)
@@ -78,7 +72,71 @@ public sealed class OnlineServicesManager : MonoBehaviour
             return false;
         }
 
-        return await TrySubmitPendingScoreAsync();
+        activeRunId = string.Empty;
+        activeRunTask = StartRunInternalAsync();
+        activeRunId = await activeRunTask;
+        return !string.IsNullOrWhiteSpace(activeRunId);
+    }
+
+    public async Task<bool> SubmitRunScoreAsync(int score)
+    {
+        if (score <= 0)
+        {
+            return false;
+        }
+
+        await InitializeAsync();
+
+        if (!IsReady || isSubmittingRun)
+        {
+            return false;
+        }
+
+        isSubmittingRun = true;
+
+        try
+        {
+            if (activeRunTask != null &&
+                string.IsNullOrWhiteSpace(activeRunId))
+            {
+                activeRunId = await activeRunTask;
+            }
+
+            if (string.IsNullOrWhiteSpace(activeRunId))
+            {
+                Debug.LogWarning(
+                    "Score was not submitted because no server-issued RunId is active.",
+                    this);
+                return false;
+            }
+
+            bool accepted = await CloudCodeModule.SubmitRunScore(
+                activeRunId,
+                score);
+
+            if (accepted)
+            {
+                Debug.Log(
+                    $"Server validated and submitted score: {score}",
+                    this);
+                activeRunId = string.Empty;
+                activeRunTask = null;
+            }
+
+            return accepted;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning(
+                $"Server rejected or failed to submit the run score.\n" +
+                exception.Message,
+                this);
+            return false;
+        }
+        finally
+        {
+            isSubmittingRun = false;
+        }
     }
 
 #if UNITY_EDITOR
@@ -86,11 +144,10 @@ public sealed class OnlineServicesManager : MonoBehaviour
     private void ResetLocalLeaderboardScoreForTesting()
     {
         PlayerPrefs.DeleteKey(LocalHighScoreKey);
-        PlayerPrefs.DeleteKey(PendingScoreKey);
         PlayerPrefs.Save();
 
         Debug.Log(
-            "Local high score and pending leaderboard score were reset. " +
+            "Local high score was reset. " +
             "The online leaderboard entry was not deleted.",
             this);
     }
@@ -114,10 +171,6 @@ public sealed class OnlineServicesManager : MonoBehaviour
             Debug.Log(
                 $"Unity Services ready. Player ID: {PlayerId}",
                 this);
-
-            SavePendingScore(
-                PlayerPrefs.GetInt(LocalHighScoreKey, 0));
-            await TrySubmitPendingScoreAsync();
         }
         catch (Exception exception)
         {
@@ -127,6 +180,30 @@ public sealed class OnlineServicesManager : MonoBehaviour
                 $"Unity Services unavailable. The game will continue offline.\n" +
                 exception.Message,
                 this);
+        }
+    }
+
+    private MyModuleBindings CloudCodeModule =>
+        cloudCodeModule ??= new MyModuleBindings();
+
+    private async Task<string> StartRunInternalAsync()
+    {
+        try
+        {
+            string runId = await CloudCodeModule.StartRun();
+
+            Debug.Log(
+                $"Server run started. RunId: {runId}",
+                this);
+            return runId;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning(
+                $"Unable to start a server-validated run.\n" +
+                exception.Message,
+                this);
+            return string.Empty;
         }
     }
 
@@ -141,68 +218,4 @@ public sealed class OnlineServicesManager : MonoBehaviour
         StateChanged?.Invoke(State);
     }
 
-    private static void SavePendingScore(int score)
-    {
-        int pendingScore =
-            PlayerPrefs.GetInt(PendingScoreKey, 0);
-
-        if (score <= pendingScore)
-        {
-            return;
-        }
-
-        PlayerPrefs.SetInt(PendingScoreKey, score);
-        PlayerPrefs.Save();
-    }
-
-    private async Task<bool> TrySubmitPendingScoreAsync()
-    {
-        int pendingScore =
-            PlayerPrefs.GetInt(PendingScoreKey, 0);
-
-        if (pendingScore <= 0)
-        {
-            return true;
-        }
-
-        if (isSubmittingScore || !IsReady)
-        {
-            return false;
-        }
-
-        isSubmittingScore = true;
-
-        try
-        {
-            await LeaderboardsService.Instance.AddPlayerScoreAsync(
-                LeaderboardId,
-                pendingScore);
-
-            int latestPendingScore =
-                PlayerPrefs.GetInt(PendingScoreKey, 0);
-
-            if (latestPendingScore <= pendingScore)
-            {
-                PlayerPrefs.DeleteKey(PendingScoreKey);
-                PlayerPrefs.Save();
-            }
-
-            Debug.Log(
-                $"Leaderboard score submitted: {pendingScore}",
-                this);
-            return true;
-        }
-        catch (Exception exception)
-        {
-            Debug.LogWarning(
-                $"Leaderboard score upload failed. " +
-                $"It will be retried later.\n{exception.Message}",
-                this);
-            return false;
-        }
-        finally
-        {
-            isSubmittingScore = false;
-        }
-    }
 }
