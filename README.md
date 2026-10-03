@@ -8,6 +8,19 @@
 
 目前已發布經過瀏覽器與無痕模式驗證的 Unity Web Release Build。遊戲仍會持續改善後端驗證、測試與作品集文件。
 
+## 遊戲畫面
+
+### 主選單
+
+![Cross The Road 主選單](docs/images/main-menu.png)
+
+### 遊戲與線上排行榜
+
+<p align="center">
+  <img src="docs/images/gameplay.png" alt="公路、河流與浮木遊戲畫面" width="49%">
+  <img src="docs/images/leaderboard.png" alt="UGS 線上排行榜" width="49%">
+</p>
+
 ## 一開始的專案目標
 
 這個專案一開始不是以做出大型商業遊戲為目標，而是要完成一個「小而完整、可公開遊玩、能用於遊戲工程師面試」的作品集，重點包括：
@@ -144,7 +157,7 @@ ProjectSettings/    Unity 專案設定
 
 - 加入 Cloud Code 成績驗證與一次性 `RunId`。
 - 增加服務層介面與測試替身，降低 UGS 耦合。
-- 補齊展示影片、遊戲截圖與架構圖。
+- 補齊展示影片與架構圖。
 - 加入自動化測試與持續整合流程。
 - 將已確認可公開使用的美術、字型、音樂與音效來源整理成授權清單。
 
