@@ -91,6 +91,33 @@
 - WebGL Input（處理瀏覽器中的 IME／中文輸入）
 - 最終平台：Unity Web Build
 
+## 系統架構
+
+```mermaid
+flowchart LR
+    Player[玩家] --> Browser[瀏覽器 / itch.io]
+    Browser --> Client[Unity WebGL Client]
+
+    subgraph UnityClient[Unity 遊戲客戶端]
+        Client --> Game[遊戲流程與狀態管理]
+        Game --> Movement[格狀移動與碰撞]
+        Game --> World[Lane 程序生成與物件池]
+        Game --> Score[計分、UI 與音效]
+        Client --> Online[線上服務管理層]
+        Client --> Local[(PlayerPrefs / 瀏覽器本機資料)]
+    end
+
+    Online --> Auth[UGS Authentication]
+    Online --> Names[UGS Player Names]
+    Online --> Board[UGS Leaderboards]
+
+    Auth --> Identity[(匿名 Player ID)]
+    Names --> Profile[(玩家顯示名稱)]
+    Board --> Ranking[(全球最高分排行榜)]
+```
+
+目前由 Unity 客戶端透過 UGS SDK 直接完成匿名登入、玩家名稱與排行榜讀寫；本機最高分、音效設定及待上傳成績則保存在瀏覽器的 PlayerPrefs。下一階段會在客戶端與排行榜之間加入 Cloud Code，以一次性 `RunId`、遊戲時間與分數合理性檢查保護成績提交。
+
 ## 專案結構
 
 ```text
