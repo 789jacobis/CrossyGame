@@ -405,7 +405,9 @@ public sealed class InfrastructureTests
                                             new Dictionary<string, object>
                                             {
                                                 ["token.actions.githubusercontent.com:sub"] =
-                                                    "repo:789jacobis/CrossyGame:ref:refs/heads/main"
+                                                    "repo:789jacobis@126335657/" +
+                                                    "CrossyGame@1365267436:" +
+                                                    "ref:refs/heads/main"
                                             })
                                     })
                             })
