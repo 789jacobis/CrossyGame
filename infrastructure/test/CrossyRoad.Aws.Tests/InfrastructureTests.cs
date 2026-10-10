@@ -85,6 +85,9 @@ public sealed class InfrastructureTests
             Assert.That(
                 stacks.Monitoring.StackName,
                 Is.EqualTo("CrossyRoadMonitoringStack-production"));
+            Assert.That(
+                stacks.Ci.StackName,
+                Is.EqualTo("CrossyRoadCiStack-production"));
         });
     }
 
@@ -102,12 +105,13 @@ public sealed class InfrastructureTests
             stacks.Identity,
             stacks.Api,
             stacks.Web,
-            stacks.Monitoring
+            stacks.Monitoring,
+            stacks.Ci
         };
 
         Assert.Multiple(() =>
         {
-            Assert.That(allStacks, Has.Length.EqualTo(5));
+            Assert.That(allStacks, Has.Length.EqualTo(6));
             Assert.That(
                 allStacks.All(stack =>
                     stack.Region == "ap-northeast-1"),
@@ -367,6 +371,48 @@ public sealed class InfrastructureTests
         template.HasOutput(
             "OperationalAlertTopicArn",
             new Dictionary<string, object>());
+    }
+
+    [Test]
+    public void CiStack_TrustsOnlyMainBranchAndAssumesBootstrapRoles()
+    {
+        var app = new App();
+        var stack = new CrossyRoadCiStack(
+            app,
+            "CiStackUnderTest",
+            DeploymentSettings.Production,
+            new StackProps());
+        Template template = Template.FromStack(stack);
+
+        template.ResourceCountIs("Custom::AWSCDKOpenIdConnectProvider", 1);
+        template.HasResourceProperties(
+            "AWS::IAM::Role",
+            Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["RoleName"] = "CrossyRoad-GitHubActions-production",
+                ["AssumeRolePolicyDocument"] = Match.ObjectLike(
+                    new Dictionary<string, object>
+                    {
+                        ["Statement"] = Match.ArrayWith(
+                        [
+                            Match.ObjectLike(new Dictionary<string, object>
+                            {
+                                ["Action"] = "sts:AssumeRoleWithWebIdentity",
+                                ["Condition"] = Match.ObjectLike(
+                                    new Dictionary<string, object>
+                                    {
+                                        ["StringLike"] = Match.ObjectLike(
+                                            new Dictionary<string, object>
+                                            {
+                                                ["token.actions.githubusercontent.com:sub"] =
+                                                    "repo:789jacobis/CrossyGame:ref:refs/heads/main"
+                                            })
+                                    })
+                            })
+                        ])
+                    })
+            }));
+        template.HasOutput("GitHubDeployRoleArn", new Dictionary<string, object>());
     }
 
     private static Template CreateWebTemplate()

@@ -74,6 +74,7 @@ sequenceDiagram
 | `CrossyRoadApiStack-production` | HTTP API、.NET 10 Lambda、14 天 Log Group |
 | `CrossyRoadDataStack-production` | Runs 與 Scores DynamoDB Tables、排行榜 GSI |
 | `CrossyRoadMonitoringStack-production` | CloudWatch Alarms、SNS、AWS Budget |
+| `CrossyRoadCiStack-production` | GitHub OIDC Provider、限定 main 分支的部署角色 |
 
 ## 維運設定
 
@@ -88,6 +89,7 @@ sequenceDiagram
 - 基礎設施：`infrastructure/` 的 AWS CDK v2 C# 專案。
 - Lambda：`CrossyRoadServer/AwsBackend/`，共用驗證規則位於 `CrossyRoadServer/Domain/`。
 - Web 發布：`infrastructure/scripts/Publish-WebBuild.ps1` 上傳 S3 並建立 CloudFront invalidation。
+- 自動部署：GitHub Actions 透過 OIDC 取得短期 AWS 憑證；後端或 CDK 變更推送至 `main` 時部署 production stacks。
 - 自動測試：驗證領域 23 項、CDK assertions 12 項。
 - 健康檢查：`GET https://fpvx62ygkk.execute-api.ap-northeast-1.amazonaws.com/health`。
 

@@ -7,7 +7,8 @@ public sealed record CrossyRoadStacks(
     CrossyRoadIdentityStack Identity,
     CrossyRoadApiStack Api,
     CrossyRoadWebStack Web,
-    CrossyRoadMonitoringStack Monitoring);
+    CrossyRoadMonitoringStack Monitoring,
+    CrossyRoadCiStack Ci);
 
 public static class CrossyRoadInfrastructure
 {
@@ -68,11 +69,18 @@ public static class CrossyRoadInfrastructure
         monitoring.AddStackDependency(api);
         monitoring.AddStackDependency(data);
 
+        var ci = new CrossyRoadCiStack(
+            app,
+            settings.StackName("Ci"),
+            settings,
+            Props());
+
         return new CrossyRoadStacks(
             data,
             identity,
             api,
             web,
-            monitoring);
+            monitoring,
+            ci);
     }
 }

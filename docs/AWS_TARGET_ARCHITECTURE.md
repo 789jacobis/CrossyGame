@@ -196,6 +196,7 @@ sequenceDiagram
 | `CrossyRoadWebStack-production` | S3 Web Bucket、CloudFront Distribution、OAC | Bucket 保留，其餘可重建 |
 | `CrossyRoadDnsStack-production`（選用） | Route 53 Records、ACM Certificate | 加入自訂網域時建立 |
 | `CrossyRoadMonitoringStack-production` | Budgets、CloudWatch Alarms、SNS | 可重建 |
+| `CrossyRoadCiStack-production` | GitHub OIDC Provider、限定 repository/main 的部署角色 | 可重建，但不由該角色自我更新 |
 
 Stack 透過明確輸出傳遞 API URL、CloudFront URL、Identity Pool ID 與 Region。Unity Client 只接收公開設定，不接收秘密值。
 

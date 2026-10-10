@@ -30,6 +30,8 @@ The script reads `cdk-outputs.json`, synchronizes `../Builds/Release`, and assig
 
 The production backend includes an anonymous Cognito Identity Pool, protected on-demand DynamoDB tables, an IAM-authorized HTTP API with default throttling, and a .NET 10 Lambda that reuses the shared score-validation domain. The monitoring stack adds a US$5 budget with US$1/3/5 thresholds, four operational CloudWatch alarms, and SNS email delivery. Publish the Lambda project to `.artifacts/backend` before synthesizing or deploying the API stack.
 
+`CrossyRoadCiStack-production` creates a GitHub OIDC provider and a deployment role trusted only by `789jacobis/CrossyGame` on `main`. The `Deploy AWS Production` workflow assumes that role with a short-lived token and can assume only the standard CDK bootstrap deployment and publishing roles. No long-lived AWS access key is stored in GitHub.
+
 ## Context
 
 Defaults are stored in `cdk.json`:
@@ -40,4 +42,4 @@ Defaults are stored in `cdk.json`:
 | `environmentName` | `production` |
 | `region` | `ap-northeast-1` |
 
-The AWS account is resolved from `CDK_DEFAULT_ACCOUNT` when credentials are configured. No account ID, access key, secret, or deployment token is committed.
+The AWS account is resolved from `CDK_DEFAULT_ACCOUNT` when credentials are configured. The public account ID is present in the deployment workflow's role ARN; no access key, secret, session token, or other AWS credential is committed.
