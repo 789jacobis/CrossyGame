@@ -1,7 +1,6 @@
 using System;
 using System.Globalization;
 using System.Threading.Tasks;
-using Unity.Services.Authentication;
 using UnityEngine;
 
 [DisallowMultipleComponent]
@@ -158,14 +157,14 @@ public sealed class PlayerProfileManager : MonoBehaviour
         ProfileChanged?.Invoke();
     }
 
-    private async Task TrySyncPendingNameAsync()
+    private Task TrySyncPendingNameAsync()
     {
         string pendingName =
             PlayerPrefs.GetString(PendingNameKey, string.Empty);
 
         if (string.IsNullOrEmpty(pendingName))
         {
-            return;
+            return Task.CompletedTask;
         }
 
         OnlineServicesManager onlineServices =
@@ -176,34 +175,16 @@ public sealed class PlayerProfileManager : MonoBehaviour
             LastError =
                 "目前離線，玩家名稱會在下次連線時自動同步。";
             ProfileChanged?.Invoke();
-            return;
+            return Task.CompletedTask;
         }
 
-        IsSyncing = true;
+        // AWS stores the display name together with the player's best score,
+        // so there is no separate profile write to synchronize.
+        PlayerPrefs.DeleteKey(PendingNameKey);
+        PlayerPrefs.Save();
         LastError = string.Empty;
         ProfileChanged?.Invoke();
-
-        try
-        {
-            await AuthenticationService.Instance
-                .UpdatePlayerNameAsync(pendingName);
-
-            PlayerPrefs.DeleteKey(PendingNameKey);
-            PlayerPrefs.Save();
-            LastError = string.Empty;
-        }
-        catch (Exception exception)
-        {
-            LastError =
-                "玩家名稱尚未同步，稍後會再嘗試。" +
-                $"\n{exception.Message}";
-            Debug.LogWarning(LastError, this);
-        }
-        finally
-        {
-            IsSyncing = false;
-            ProfileChanged?.Invoke();
-        }
+        return Task.CompletedTask;
     }
 
     private void SaveLocalName(string displayName)

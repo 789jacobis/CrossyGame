@@ -25,6 +25,8 @@
 *.slnx
 !CrossyRoadServer/**/*.csproj
 !CrossyRoadServer/*.sln
+!infrastructure/**/*.csproj
+!infrastructure/*.sln
 *.suo
 *.user
 *.userprefs
@@ -50,4 +52,12 @@ crashlytics-build.properties
 
 # Temporary auto-generated assets
 Assets/AssetStoreTools*
+
+# AWS CDK generated output and local tooling
+/infrastructure/cdk.out/
+/infrastructure/node_modules/
+/infrastructure/cdk-outputs*.json
+/infrastructure/backend-foundation-outputs*.json
+/infrastructure/api-outputs*.json
+/infrastructure/.artifacts/
 

@@ -15,10 +15,7 @@ public class MyModule
 {
     private const string LeaderboardId = "global_high_scores";
     private const string ActiveRunKey = "crossy_active_run";
-    private const int MaximumAcceptedScore = 100_000;
-    private const double MaximumScorePerSecond = 12d;
-    private const double TimingGraceSeconds = 2d;
-    private static readonly TimeSpan MaximumRunAge = TimeSpan.FromHours(6);
+    private static readonly RunScoreValidator ScoreValidator = new();
 
     private readonly IGameApiClient gameApiClient;
     private readonly ILogger<MyModule> logger;
@@ -39,12 +36,7 @@ public class MyModule
     public async Task<string> StartRun(IExecutionContext context)
     {
         string playerId = RequirePlayerId(context);
-        var run = new RunRecord
-        {
-            RunId = Guid.NewGuid().ToString("N"),
-            StartedAtUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            Consumed = false
-        };
+        RunRecord run = RunRecord.Start(playerId, DateTimeOffset.UtcNow);
 
         await SaveRunAsync(context, playerId, run);
         logger.LogInformation(
@@ -62,10 +54,12 @@ public class MyModule
         int score)
     {
         string playerId = RequirePlayerId(context);
-        ValidateScoreRange(score);
 
         RunRecord run = await LoadRunAsync(context, playerId);
-        ValidateRun(run, runId, score);
+        ScoreValidator.Validate(
+            run,
+            new RunScoreSubmission(playerId, runId, score),
+            DateTimeOffset.UtcNow);
 
         await gameApiClient.Leaderboards.AddLeaderboardPlayerScoreAsync(
             context,
@@ -122,9 +116,18 @@ public class MyModule
                 "No active run exists for this player.");
         }
 
-        return JsonSerializer.Deserialize<RunRecord>(serializedRun)
+        RunRecord run = JsonSerializer.Deserialize<RunRecord>(serializedRun)
             ?? throw new InvalidOperationException(
                 "The active run data is invalid.");
+
+        // Legacy records are already isolated by the player's protected
+        // Cloud Save partition, so they can safely adopt that partition owner.
+        if (string.IsNullOrWhiteSpace(run.PlayerId))
+        {
+            run.PlayerId = playerId;
+        }
+
+        return run;
     }
 
     private static string RequirePlayerId(IExecutionContext context)
@@ -138,62 +141,4 @@ public class MyModule
         return context.PlayerId;
     }
 
-    private static void ValidateScoreRange(int score)
-    {
-        if (score <= 0 || score > MaximumAcceptedScore)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(score),
-                $"Score must be between 1 and {MaximumAcceptedScore}.");
-        }
-    }
-
-    private static void ValidateRun(
-        RunRecord run,
-        string submittedRunId,
-        int score)
-    {
-        if (string.IsNullOrWhiteSpace(submittedRunId) ||
-            !string.Equals(
-                run.RunId,
-                submittedRunId,
-                StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException("The RunId is invalid.");
-        }
-
-        if (run.Consumed)
-        {
-            throw new InvalidOperationException(
-                "This run has already been submitted.");
-        }
-
-        DateTimeOffset startedAt =
-            DateTimeOffset.FromUnixTimeMilliseconds(
-                run.StartedAtUnixMilliseconds);
-        TimeSpan elapsed = DateTimeOffset.UtcNow - startedAt;
-
-        if (elapsed < TimeSpan.Zero || elapsed > MaximumRunAge)
-        {
-            throw new InvalidOperationException(
-                "This run is outside the accepted time window.");
-        }
-
-        double minimumSeconds = Math.Max(
-            0d,
-            score / MaximumScorePerSecond - TimingGraceSeconds);
-
-        if (elapsed.TotalSeconds < minimumSeconds)
-        {
-            throw new InvalidOperationException(
-                "The submitted score increased faster than gameplay allows.");
-        }
-    }
-
-    private sealed class RunRecord
-    {
-        public string RunId { get; set; } = string.Empty;
-        public long StartedAtUnixMilliseconds { get; set; }
-        public bool Consumed { get; set; }
-    }
 }

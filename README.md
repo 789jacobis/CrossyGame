@@ -4,9 +4,11 @@
 
 ## 立即遊玩
 
-**[在 itch.io 遊玩 Cross The Road](https://789jacobis.itch.io/cross-the-road)**
+**[在 AWS CloudFront 遊玩 Cross The Road](https://d3gh9bawx8sr7b.cloudfront.net)**
 
-目前已發布經過一般與無痕瀏覽器驗證的 Unity Web Release Build，並完成 Cloud Code 成績驗證與排行榜寫入保護。
+[itch.io 發布頁](https://789jacobis.itch.io/cross-the-road)保留作為替代入口。
+
+目前正式版本由 AWS 提供靜態網站、匿名身分、伺服器端成績驗證與排行榜，並已通過一般及無痕瀏覽器驗證。
 
 ## 遊戲畫面
 
@@ -18,7 +20,7 @@
 
 <p align="center">
   <img src="docs/images/gameplay.png" alt="公路、河流與浮木遊戲畫面" width="49%">
-  <img src="docs/images/leaderboard.png" alt="UGS 線上排行榜" width="49%">
+  <img src="docs/images/leaderboard.png" alt="線上排行榜" width="49%">
 </p>
 
 ## 目前完成的功能
@@ -44,19 +46,20 @@
 
 ### 線上功能
 
-- Unity Authentication 匿名玩家身分。
-- Unity Player Names 顯示名稱。
-- Unity Leaderboards 全球最高分排行榜。
+- Amazon Cognito Identity Pools 匿名玩家身分與短期憑證。
+- Amazon API Gateway HTTP API 與 SigV4 請求簽章。
+- AWS Lambda（.NET 10）伺服器端回合與分數驗證。
+- Amazon DynamoDB 全球最高分排行榜。
 - 顯示最高分玩家；玩家不在前段名次時，以省略列加上自己的排名。
 - 同分玩家顯示並列名次。
-- 每局開始時由 Cloud Code 簽發一次性 `RunId`。
-- 遊戲結束後由 Cloud Code 檢查玩家、`RunId`、提交次數、分數範圍、執行時間與得分速度。
-- 通過驗證後，僅由 Cloud Code 使用服務權杖寫入排行榜。
-- Access Control 禁止玩家端直接寫入 Leaderboards，同時保留排行榜讀取能力。
+- 每局開始時由 Lambda 簽發一次性 `RunId`。
+- 遊戲結束後由 Lambda 檢查玩家、`RunId`、提交次數、分數範圍、執行時間與得分速度。
+- 玩家 IAM Role 只能呼叫指定 API，不能直接存取 DynamoDB、Lambda 或 S3。
 
 ### 發布狀態
 
 - 已建立非 Development 的 Runtime Speed Web Release Build。
+- 已部署至私有 S3 Bucket，並透過 CloudFront OAC、HTTPS 與 CDN 對外提供。
 - 已部署至 itch.io，並以未登入的無痕瀏覽器驗證公開存取。
 - 支援頁面內嵌遊玩與全螢幕模式。
 
@@ -76,9 +79,9 @@
 - C#
 - Unity Input System
 - TextMesh Pro
-- Unity Gaming Services：Authentication、Player Names、Leaderboards
-- Unity Cloud Code C# Modules、Cloud Save Protected Data、Access Control
-- .NET 9（Cloud Code 模組開發與測試）
+- AWS：CloudFront、S3、Cognito Identity Pools、API Gateway、Lambda、DynamoDB、CloudWatch、SNS、Budgets
+- AWS CDK v2（C#）
+- .NET 10（Lambda）、.NET 9（基礎設施與測試）
 - WebGL Input（處理瀏覽器中的 IME／中文輸入）
 - 最終平台：Unity Web Build
 
@@ -86,8 +89,10 @@
 
 ```mermaid
 flowchart LR
-    Player[玩家] --> Browser[瀏覽器 / itch.io]
-    Browser --> Client[Unity WebGL Client]
+    Player[玩家] --> Browser[瀏覽器]
+    Browser --> CDN[CloudFront / HTTPS]
+    CDN --> Bucket[(私有 S3 Web Build)]
+    CDN --> Client[Unity WebGL Client]
 
     subgraph UnityClient[Unity 遊戲客戶端]
         Client --> Game[遊戲流程與狀態管理]
@@ -98,23 +103,18 @@ flowchart LR
         Client --> Local[(PlayerPrefs / 瀏覽器本機資料)]
     end
 
-    Online --> Auth[UGS Authentication]
-    Online --> Names[UGS Player Names]
-    Online --> CloudCode[UGS Cloud Code C# Module]
-    Online -->|讀取排名| Board[UGS Leaderboards]
-    Online -.->|玩家直接寫入：Access Control 拒絕| Board
-
-    CloudCode --> Runs[(Cloud Save Protected Run)]
-    CloudCode -->|驗證後以 Service Token 寫入| Board
-
-    Auth --> Identity[(匿名 Player ID)]
-    Names --> Profile[(玩家顯示名稱)]
-    Board --> Ranking[(全球最高分排行榜)]
+    Online --> Cognito[Cognito Identity Pool]
+    Cognito --> Role[IAM Guest Role]
+    Online -->|SigV4| API[API Gateway HTTP API]
+    API --> Lambda[Lambda C# Backend]
+    Lambda --> Runs[(DynamoDB Runs)]
+    Lambda --> Board[(DynamoDB Scores + GSI)]
+    Lambda --> Logs[CloudWatch Logs / Alarms]
 ```
 
-Unity 客戶端直接完成匿名登入、玩家名稱與排行榜讀取，但不能直接寫入分數。每局開始與結束都會呼叫 Cloud Code；模組將執行中的 `RunId` 保存在 Cloud Save Protected Data，驗證通過後才以服務權杖更新排行榜。本機最高分與音效設定保存在瀏覽器的 PlayerPrefs。
+Unity 客戶端向 Cognito 取得匿名身分與短期憑證，再以 SigV4 呼叫受 IAM 保護的 API。每局開始與結束都會經過 Lambda；`RunId`、使用狀態與最高分由 DynamoDB 保存，客戶端沒有資料表寫入權限。本機最高分與音效設定保存在瀏覽器的 PlayerPrefs。
 
-詳細元件與成績提交流程請參考 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。
+目前正式架構請參考 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)；AWS Serverless 的設計決策、安全邊界與遷移紀錄請參考 [`docs/AWS_TARGET_ARCHITECTURE.md`](docs/AWS_TARGET_ARCHITECTURE.md)。
 
 ## 專案結構
 
@@ -129,7 +129,8 @@ Assets/
   Scenes/           遊戲場景
   Scripts/          遊戲、UI、音效與線上服務程式碼
   CloudCode/        模組參照、產生的客戶端綁定與 Access Control 規則
-CrossyRoadServer/   Cloud Code C# 模組與測試專案
+CrossyRoadServer/   共用驗證領域、AWS Lambda、舊版 Cloud Code 與測試
+infrastructure/     AWS CDK C# production 基礎設施與測試
 Packages/           Unity 套件清單與鎖定檔
 ProjectSettings/    Unity 專案設定
 ```
@@ -145,7 +146,7 @@ ProjectSettings/    Unity 專案設定
 5. 開啟 `Assets/Scenes/SampleScene.unity`。
 6. 按下 Play 測試遊戲。
 
-線上功能需要專案連結至對應的 Unity Cloud Project，並在 UGS Dashboard 建立 ID 為 `global_high_scores` 的 Leaderboard。`CrossyRoadServer` Cloud Code 模組與 `CrossyRoadAccessControl.ac` 也必須部署到相同環境。沒有可用的 UGS 環境時，核心遊戲仍可執行，但線上名稱、伺服器驗證與排行榜功能會不可用。
+正式線上功能需要已部署的 Cognito Identity Pool、API Gateway、Lambda 與 DynamoDB。公開端點設定目前位於 `Assets/Scripts/AwsGameBackend.cs`；AWS 暫時不可用時，核心遊戲仍可執行，但伺服器驗證與排行榜功能會離線。
 
 ## 建置 Web 版本
 
@@ -155,24 +156,24 @@ ProjectSettings/    Unity 專案設定
 4. Player Settings 的預設 Canvas 建議使用 `960 × 540`。
 5. 關閉 Development Build，將 Code Optimization 設為 Runtime Speed。
 6. 按下 Build，輸出到被 Git 忽略的 `Builds/Release/` 資料夾。
-7. 將 `Release` 內的內容壓成 ZIP，確保 `index.html` 位於 ZIP 根目錄，再上傳至 itch.io。
+7. 執行 `infrastructure/scripts/Publish-WebBuild.ps1` 同步至 S3 並清除 CloudFront 快取；也可將 `Release` 壓成 ZIP 後更新 itch.io。
 8. 使用本機 HTTP server 或網站平台提供服務；Web Build 不能直接以 `file://` 正確執行。
 
 ## 後端取捨與安全性
 
-目前的排行榜採用伺服器驗證流程：
+目前的排行榜採用 AWS 伺服器驗證流程：
 
-1. `StartRun` 建立隨機且一次性的 `RunId`，並將開始時間與使用狀態寫入 Protected Data。
-2. `SubmitRunScore` 驗證登入玩家、分數範圍、`RunId`、是否重複提交、最長遊戲時間及最高合理得分速度。
-3. Cloud Code 使用 Service Token 寫入 `global_high_scores`。
-4. Access Control 封鎖 `Player` 對 Leaderboards 的所有 `Write`，但允許讀取。
+1. `POST /runs` 建立隨機且一次性的 `RunId`，並將開始時間、期限與使用狀態寫入 DynamoDB。
+2. `POST /scores` 驗證 Cognito 玩家、分數範圍、`RunId`、是否重複提交、最長遊戲時間及最高合理得分速度。
+3. Lambda 使用條件式寫入消耗該回合，並只在成績較高時更新排行榜。
+4. Cognito Guest Role 僅允許 `execute-api:Invoke`，玩家不能直接寫入 DynamoDB。
 
-此設計已實際驗證：玩家端直接呼叫 Leaderboards 寫入會收到 `Access has been restricted`，正常遊戲則能由伺服器驗證並提交。它能阻擋直接偽造成績與重放同一局，但仍不是完整的伺服器權威模擬；若要進一步提高競技安全性，可增加事件紀錄、速率限制、異常偵測與人工稽核。
+此設計已實際驗證：未簽章 API 請求會被拒絕，正常遊戲則能取得匿名憑證並由伺服器驗證及提交。它能阻擋直接寫入資料表與重放同一局，但仍不是逐幀的伺服器權威模擬。
 
-## 下一步
+## 維運護欄
 
-- 為 `StartRun`、`SubmitRunScore` 與驗證規則補齊單元測試。
-- 增加服務層介面與測試替身，降低 Unity 客戶端與 UGS 的耦合。
-- 建立 GitHub Actions，檢查 Cloud Code build/test 與 Unity 專案基本品質。
-- 補上短版遊戲展示影片。
-- 視需求加入提交速率限制、異常紀錄與排行榜管理工具。
+- API 預設限流：每秒 10 次、突發 20 次。
+- Lambda 與 API 的 Errors、Throttles、5xx、p95 Latency CloudWatch 警報。
+- Lambda 日誌保留 14 天。
+- AWS Budgets 月費 US$1、US$3、US$5 通知。
+- DynamoDB 刪除保護、時間點復原與 CDK `RETAIN` 策略。

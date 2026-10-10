@@ -1,0 +1,53 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-and-infrastructure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: infrastructure/package-lock.json
+
+      - name: Test score validation
+        run: dotnet test CrossyRoadServer/TestProject/TestProject.csproj --configuration Release
+
+      - name: Test CDK infrastructure
+        run: dotnet test infrastructure/test/CrossyRoad.Aws.Tests/CrossyRoad.Aws.Tests.csproj --configuration Release
+
+      - name: Publish Lambda artifact
+        run: >-
+          dotnet publish CrossyRoadServer/AwsBackend/CrossyRoad.AwsBackend.csproj
+          --configuration Release
+          --output infrastructure/.artifacts/backend
+
+      - name: Install CDK dependencies
+        working-directory: infrastructure
+        run: npm ci
+
+      - name: Synthesize CloudFormation templates
+        working-directory: infrastructure
+        run: npm run synth

@@ -1,0 +1,12 @@
+{
+  "name": "crossy-road-aws-infrastructure",
+  "private": true,
+  "scripts": {
+    "cdk": "cdk",
+    "list": "cdk list",
+    "synth": "cdk synth"
+  },
+  "devDependencies": {
+    "aws-cdk": "2.1144.0"
+  }
+}

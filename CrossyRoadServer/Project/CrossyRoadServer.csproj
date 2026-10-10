@@ -9,6 +9,9 @@
     <PackageReference Include="Com.Unity.Services.CloudCode.Core" Version="0.0.5" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="7.0.1" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Domain\CrossyRoad.Domain.csproj" />
+  </ItemGroup>
   <PropertyGroup>
     <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
   </PropertyGroup>

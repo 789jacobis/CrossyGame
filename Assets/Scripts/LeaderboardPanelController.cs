@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
 using TMPro;
-using Unity.Services.Leaderboards;
-using Unity.Services.Leaderboards.Models;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -13,8 +11,6 @@ using UnityEngine.UI;
 [DisallowMultipleComponent]
 public sealed class LeaderboardPanelController : MonoBehaviour
 {
-    private const string LeaderboardId = "global_high_scores";
-
     [Header("Panels and Buttons")]
     [SerializeField] private GameObject leaderboardPanel;
     [SerializeField] private Button startButton;
@@ -272,30 +268,17 @@ public sealed class LeaderboardPanelController : MonoBehaviour
                 return;
             }
 
-            LeaderboardScoresPage page =
-                await LeaderboardsService.Instance.GetScoresAsync(
-                    LeaderboardId,
-                    new GetScoresOptions
-                    {
-                        Offset = 0,
-                        Limit = maximumEntries
-                    });
+            IReadOnlyList<GameLeaderboardEntry> entries =
+                await onlineServices.GetLeaderboardAsync(maximumEntries);
 
             string currentPlayerId = onlineServices.PlayerId;
-            LeaderboardEntry currentPlayerEntry = null;
-
-            if (!ContainsPlayer(page.Results, currentPlayerId))
-            {
-                currentPlayerEntry =
-                    await TryGetCurrentPlayerEntryAsync();
-            }
 
             if (!IsCurrentRequest(requestedVersion))
             {
                 return;
             }
 
-            RenderEntries(page.Results, currentPlayerEntry);
+            RenderEntries(entries, null);
         }
         catch (Exception exception)
         {
@@ -315,24 +298,9 @@ public sealed class LeaderboardPanelController : MonoBehaviour
         }
     }
 
-    private async Task<LeaderboardEntry>
-        TryGetCurrentPlayerEntryAsync()
-    {
-        try
-        {
-            return await LeaderboardsService.Instance
-                .GetPlayerScoreAsync(LeaderboardId);
-        }
-        catch (Exception)
-        {
-            // A new player may not have submitted a score yet.
-            return null;
-        }
-    }
-
     private void RenderEntries(
-        IReadOnlyList<LeaderboardEntry> entries,
-        LeaderboardEntry currentPlayerEntry)
+        IReadOnlyList<GameLeaderboardEntry> entries,
+        GameLeaderboardEntry currentPlayerEntry)
     {
         ClearRows();
 
@@ -378,13 +346,13 @@ public sealed class LeaderboardPanelController : MonoBehaviour
 
         for (int index = 0; index < count; index++)
         {
-            LeaderboardEntry entry = entries[index];
-            long roundedScore = (long)Math.Round(entry.Score);
+            GameLeaderboardEntry entry = entries[index];
+            long roundedScore = entry.score;
 
             if (!previousScore.HasValue ||
                 roundedScore != previousScore.Value)
             {
-                displayedRank = entry.Rank + 1;
+                displayedRank = entry.rank;
             }
 
             previousScore = roundedScore;
@@ -398,8 +366,8 @@ public sealed class LeaderboardPanelController : MonoBehaviour
     }
 
     private void RenderTopEntriesWithCurrentPlayer(
-        IReadOnlyList<LeaderboardEntry> entries,
-        LeaderboardEntry currentPlayerEntry,
+        IReadOnlyList<GameLeaderboardEntry> entries,
+        GameLeaderboardEntry currentPlayerEntry,
         string currentPlayerId)
     {
         int topEntryLimit = Mathf.Min(
@@ -413,13 +381,13 @@ public sealed class LeaderboardPanelController : MonoBehaviour
 
         for (int index = 0; index < topEntryCount; index++)
         {
-            LeaderboardEntry entry = entries[index];
-            long roundedScore = (long)Math.Round(entry.Score);
+            GameLeaderboardEntry entry = entries[index];
+            long roundedScore = entry.score;
 
             if (!previousScore.HasValue ||
                 roundedScore != previousScore.Value)
             {
-                displayedRank = entry.Rank + 1;
+                displayedRank = entry.rank;
             }
 
             previousScore = roundedScore;
@@ -435,24 +403,24 @@ public sealed class LeaderboardPanelController : MonoBehaviour
         CreateEntryRow(
             currentPlayerEntry,
             topEntryCount + 1,
-            currentPlayerEntry.Rank + 1,
+            currentPlayerEntry.rank,
             currentPlayerId);
     }
 
     private void CreateEntryRow(
-        LeaderboardEntry entry,
+        GameLeaderboardEntry entry,
         int rowIndex,
         int displayedRank,
         string currentPlayerId)
     {
         RectTransform row = CreateRow(
-            $"EntryRow_{entry.Rank + 1}",
+            $"EntryRow_{entry.rank}",
             rowIndex);
 
         bool isCurrentPlayer =
             !string.IsNullOrEmpty(currentPlayerId) &&
-            entry.PlayerId == currentPlayerId;
-        long roundedScore = (long)Math.Round(entry.Score);
+            entry.playerId == currentPlayerId;
+        long roundedScore = entry.score;
 
         SetRowText(
             row,
@@ -515,7 +483,7 @@ public sealed class LeaderboardPanelController : MonoBehaviour
     }
 
     private static bool ContainsPlayer(
-        IReadOnlyList<LeaderboardEntry> entries,
+        IReadOnlyList<GameLeaderboardEntry> entries,
         string playerId)
     {
         if (entries == null ||
@@ -526,7 +494,7 @@ public sealed class LeaderboardPanelController : MonoBehaviour
 
         for (int index = 0; index < entries.Count; index++)
         {
-            if (entries[index].PlayerId == playerId)
+            if (entries[index].playerId == playerId)
             {
                 return true;
             }
@@ -536,10 +504,10 @@ public sealed class LeaderboardPanelController : MonoBehaviour
     }
 
     private static string GetDisplayName(
-        LeaderboardEntry entry,
+        GameLeaderboardEntry entry,
         bool isCurrentPlayer)
     {
-        string displayName = entry.PlayerName;
+        string displayName = entry.displayName;
 
         if (isCurrentPlayer &&
             PlayerProfileManager.Instance != null &&
@@ -552,9 +520,9 @@ public sealed class LeaderboardPanelController : MonoBehaviour
 
         if (string.IsNullOrWhiteSpace(displayName))
         {
-            displayName = string.IsNullOrEmpty(entry.PlayerId)
+            displayName = string.IsNullOrEmpty(entry.playerId)
                 ? "Unknown"
-                : $"Player-{entry.PlayerId[..Mathf.Min(5, entry.PlayerId.Length)]}";
+                : $"Player-{entry.playerId[..Mathf.Min(5, entry.playerId.Length)]}";
         }
 
         int separatorIndex = displayName.LastIndexOf('#');

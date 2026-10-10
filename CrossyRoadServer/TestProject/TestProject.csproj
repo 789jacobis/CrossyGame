@@ -19,6 +19,6 @@
     <Using Include="NUnit.Framework" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Project\CrossyRoadServer.csproj" />
+    <ProjectReference Include="..\Domain\CrossyRoad.Domain.csproj" />
   </ItemGroup>
 </Project>

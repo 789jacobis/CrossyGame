@@ -1,8 +1,6 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using Unity.Services.Authentication;
-using Unity.Services.CloudCode.GeneratedBindings;
-using Unity.Services.Core;
 using UnityEngine;
 
 public enum OnlineServicesState
@@ -20,7 +18,7 @@ public sealed class OnlineServicesManager : MonoBehaviour
 
     private Task initializationTask;
     private Task<string> activeRunTask;
-    private MyModuleBindings cloudCodeModule;
+    private IGameBackend gameBackend;
     private string activeRunId = string.Empty;
     private bool isSubmittingRun;
 
@@ -31,10 +29,7 @@ public sealed class OnlineServicesManager : MonoBehaviour
 
     public bool IsReady => State == OnlineServicesState.Ready;
 
-    public string PlayerId =>
-        AuthenticationService.Instance.IsSignedIn
-            ? AuthenticationService.Instance.PlayerId
-            : string.Empty;
+    public string PlayerId => gameBackend?.PlayerId ?? string.Empty;
 
     public string LastError { get; private set; } = string.Empty;
 
@@ -110,9 +105,12 @@ public sealed class OnlineServicesManager : MonoBehaviour
                 return false;
             }
 
-            bool accepted = await CloudCodeModule.SubmitRunScore(
+            string displayName =
+                PlayerProfileManager.Instance?.DisplayName ?? "Player";
+            bool accepted = await GameBackend.SubmitRunScoreAsync(
                 activeRunId,
-                score);
+                score,
+                displayName);
 
             if (accepted)
             {
@@ -139,6 +137,18 @@ public sealed class OnlineServicesManager : MonoBehaviour
         }
     }
 
+    public async Task<IReadOnlyList<GameLeaderboardEntry>>
+        GetLeaderboardAsync(int limit)
+    {
+        await InitializeAsync();
+        if (!IsReady)
+        {
+            return Array.Empty<GameLeaderboardEntry>();
+        }
+
+        return await GameBackend.GetLeaderboardAsync(limit);
+    }
+
 #if UNITY_EDITOR
     [ContextMenu("Reset Local Leaderboard Score For Testing")]
     private void ResetLocalLeaderboardScoreForTesting()
@@ -159,17 +169,12 @@ public sealed class OnlineServicesManager : MonoBehaviour
 
         try
         {
-            await UnityServices.InitializeAsync();
-
-            if (!AuthenticationService.Instance.IsSignedIn)
-            {
-                await AuthenticationService.Instance.SignInAnonymouslyAsync();
-            }
+            await GameBackend.InitializeAsync();
 
             LastError = string.Empty;
             SetState(OnlineServicesState.Ready);
             Debug.Log(
-                $"Unity Services ready. Player ID: {PlayerId}",
+                $"AWS services ready. Player ID: {PlayerId}",
                 this);
         }
         catch (Exception exception)
@@ -177,20 +182,20 @@ public sealed class OnlineServicesManager : MonoBehaviour
             LastError = exception.Message;
             SetState(OnlineServicesState.Offline);
             Debug.LogWarning(
-                $"Unity Services unavailable. The game will continue offline.\n" +
+                $"AWS services unavailable. The game will continue offline.\n" +
                 exception.Message,
                 this);
         }
     }
 
-    private MyModuleBindings CloudCodeModule =>
-        cloudCodeModule ??= new MyModuleBindings();
+    private IGameBackend GameBackend =>
+        gameBackend ??= new AwsGameBackend();
 
     private async Task<string> StartRunInternalAsync()
     {
         try
         {
-            string runId = await CloudCodeModule.StartRun();
+            string runId = await GameBackend.StartRunAsync();
 
             Debug.Log(
                 $"Server run started. RunId: {runId}",

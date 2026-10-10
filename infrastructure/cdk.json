@@ -1,0 +1,9 @@
+{
+  "app": "dotnet run --no-restore --project src/CrossyRoad.Aws/CrossyRoad.Aws.csproj",
+  "context": {
+    "projectName": "CrossyRoad",
+    "environmentName": "production",
+    "region": "ap-northeast-1",
+    "@aws-cdk/core:defaultCrossStackReferences": "strong"
+  }
+}
