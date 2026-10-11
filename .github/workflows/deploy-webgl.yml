@@ -2,6 +2,12 @@ name: Build and Deploy WebGL
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - Assets/**
+      - Packages/**
+      - ProjectSettings/**
+      - .github/workflows/deploy-webgl.yml
   push:
     branches: [main]
     paths:
@@ -13,6 +19,7 @@ on:
       - infrastructure/scripts/Rollback-WebBuild.ps1
 
 permissions:
+  checks: write
   contents: read
   id-token: write
 
@@ -21,8 +28,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  unity-tests:
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-EditMode-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-EditMode-
+
+      - name: Run Unity EditMode tests
+        id: unity-tests
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: auto
+          testMode: editmode
+          artifactsPath: artifacts/editmode
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: Unity EditMode Tests
+
+      - name: Upload Unity test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Unity-EditMode-Test-Results-${{ github.sha }}
+          path: artifacts/editmode
+          if-no-files-found: warn
+          retention-days: 14
+
   build-and-deploy:
-    if: github.event_name == 'workflow_dispatch' || vars.ENABLE_WEBGL_AUTO_DEPLOY == 'true'
+    needs: unity-tests
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.event_name == 'workflow_dispatch' || vars.ENABLE_WEBGL_AUTO_DEPLOY == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
