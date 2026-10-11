@@ -124,7 +124,11 @@ public sealed class CrossyRoadApiStack : CrossyRoadStack
         var defaultStage = (CfnStage)Api.DefaultStage!.Node.DefaultChild!;
         defaultStage.DefaultRouteSettings = new CfnStage.RouteSettingsProperty
         {
-            DetailedMetricsEnabled = true,
+            // The account-level API metrics used by the production alarms are
+            // emitted automatically. Route-level detailed metrics add up to
+            // six billable CloudWatch metrics per route and are unnecessary
+            // for this workload.
+            DetailedMetricsEnabled = false,
             ThrottlingBurstLimit = 20,
             ThrottlingRateLimit = 10
         };

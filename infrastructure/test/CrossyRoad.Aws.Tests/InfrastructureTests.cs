@@ -270,7 +270,7 @@ public sealed class InfrastructureTests
             {
                 ["DefaultRouteSettings"] = Match.ObjectLike(new Dictionary<string, object>
                 {
-                    ["DetailedMetricsEnabled"] = true,
+                    ["DetailedMetricsEnabled"] = false,
                     ["ThrottlingBurstLimit"] = 20,
                     ["ThrottlingRateLimit"] = 10
                 })
