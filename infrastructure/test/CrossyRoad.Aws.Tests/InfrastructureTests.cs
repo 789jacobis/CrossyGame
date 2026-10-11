@@ -374,14 +374,20 @@ public sealed class InfrastructureTests
     }
 
     [Test]
-    public void CiStack_TrustsOnlyMainBranchAndAssumesBootstrapRoles()
+    public void CiStack_TrustsMainBranchAndCanPublishWebBuild()
     {
         var app = new App();
+        var web = new CrossyRoadWebStack(
+            app,
+            "WebStackUnderTest",
+            DeploymentSettings.Production,
+            new StackProps());
         var stack = new CrossyRoadCiStack(
             app,
             "CiStackUnderTest",
             DeploymentSettings.Production,
-            new StackProps());
+            new StackProps(),
+            web);
         Template template = Template.FromStack(stack);
 
         template.ResourceCountIs("Custom::AWSCDKOpenIdConnectProvider", 1);
@@ -415,6 +421,38 @@ public sealed class InfrastructureTests
                     })
             }));
         template.HasOutput("GitHubDeployRoleArn", new Dictionary<string, object>());
+        template.HasResourceProperties(
+            "AWS::IAM::Policy",
+            Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["PolicyDocument"] = Match.ObjectLike(
+                    new Dictionary<string, object>
+                    {
+                        ["Statement"] = Match.ArrayWith(
+                        [
+                            Match.ObjectLike(new Dictionary<string, object>
+                            {
+                                ["Action"] = Match.ArrayWith(
+                                [
+                                    "s3:DeleteObject*",
+                                    "s3:PutObject"
+                                ])
+                            }),
+                            Match.ObjectLike(new Dictionary<string, object>
+                            {
+                                ["Action"] = Match.ArrayWith(
+                                [
+                                    "cloudfront:CreateInvalidation",
+                                    "cloudfront:GetInvalidation"
+                                ])
+                            }),
+                            Match.ObjectLike(new Dictionary<string, object>
+                            {
+                                ["Action"] = "cloudformation:DescribeStacks"
+                            })
+                        ])
+                    })
+            }));
     }
 
     private static Template CreateWebTemplate()

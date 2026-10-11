@@ -10,9 +10,12 @@ public sealed class CrossyRoadCiStack : CrossyRoadStack
         Construct scope,
         string id,
         DeploymentSettings settings,
-        IStackProps props)
+        IStackProps props,
+        CrossyRoadWebStack web)
         : base(scope, id, settings, props)
     {
+        ArgumentNullException.ThrowIfNull(web);
+
         var provider = new OpenIdConnectProvider(this, "GitHubProvider", new OpenIdConnectProviderProps
         {
             Url = "https://token.actions.githubusercontent.com",
@@ -55,6 +58,29 @@ public sealed class CrossyRoadCiStack : CrossyRoadStack
                 BootstrapRole("file-publishing"),
                 BootstrapRole("image-publishing"),
                 BootstrapRole("lookup")
+            ]
+        }));
+
+        web.WebBucket.GrantReadWrite(deployRole);
+
+        deployRole.AddToPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Actions =
+            [
+                "cloudfront:CreateInvalidation",
+                "cloudfront:GetInvalidation"
+            ],
+            Resources = [web.WebDistribution.DistributionArn]
+        }));
+
+        deployRole.AddToPolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Actions = ["cloudformation:DescribeStacks"],
+            Resources =
+            [
+                $"arn:{Amazon.CDK.Aws.PARTITION}:cloudformation:" +
+                $"{settings.Region}:{Amazon.CDK.Aws.ACCOUNT_ID}:stack/" +
+                $"{web.StackName}/*"
             ]
         }));
 

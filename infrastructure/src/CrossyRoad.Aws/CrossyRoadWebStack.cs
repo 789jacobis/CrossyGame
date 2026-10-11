@@ -8,6 +8,10 @@ namespace CrossyRoad.Aws;
 
 public sealed class CrossyRoadWebStack : CrossyRoadStack
 {
+    public Bucket WebBucket { get; }
+
+    public Distribution WebDistribution { get; }
+
     public CrossyRoadWebStack(
         Construct scope,
         string id,
@@ -15,7 +19,7 @@ public sealed class CrossyRoadWebStack : CrossyRoadStack
         IStackProps props)
         : base(scope, id, settings, props)
     {
-        var webBucket = new Bucket(this, "WebAssets", new BucketProps
+        WebBucket = new Bucket(this, "WebAssets", new BucketProps
         {
             BlockPublicAccess = BlockPublicAccess.BLOCK_ALL,
             Encryption = BucketEncryption.S3_MANAGED,
@@ -32,7 +36,7 @@ public sealed class CrossyRoadWebStack : CrossyRoadStack
             ]
         });
 
-        var distribution = new Distribution(
+        WebDistribution = new Distribution(
             this,
             "WebDistribution",
             new DistributionProps
@@ -40,7 +44,7 @@ public sealed class CrossyRoadWebStack : CrossyRoadStack
                 DefaultRootObject = "index.html",
                 DefaultBehavior = new BehaviorOptions
                 {
-                    Origin = S3BucketOrigin.WithOriginAccessControl(webBucket),
+                    Origin = S3BucketOrigin.WithOriginAccessControl(WebBucket),
                     ViewerProtocolPolicy = ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
                     AllowedMethods = AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
                     CachedMethods = CachedMethods.CACHE_GET_HEAD_OPTIONS,
@@ -56,19 +60,19 @@ public sealed class CrossyRoadWebStack : CrossyRoadStack
         _ = new CfnOutput(this, "WebBucketName", new CfnOutputProps
         {
             Description = "Private S3 bucket containing the Unity Web build.",
-            Value = webBucket.BucketName
+            Value = WebBucket.BucketName
         });
 
         _ = new CfnOutput(this, "CloudFrontDistributionId", new CfnOutputProps
         {
             Description = "CloudFront distribution ID used for cache invalidation.",
-            Value = distribution.DistributionId
+            Value = WebDistribution.DistributionId
         });
 
         _ = new CfnOutput(this, "GameUrl", new CfnOutputProps
         {
             Description = "Public HTTPS URL for the game.",
-            Value = $"https://{distribution.DistributionDomainName}"
+            Value = $"https://{WebDistribution.DistributionDomainName}"
         });
     }
 }

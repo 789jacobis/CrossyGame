@@ -2,37 +2,42 @@
 param(
     [string]$BuildPath = "$PSScriptRoot\..\..\Builds\Release",
     [string]$OutputsPath = "$PSScriptRoot\..\cdk-outputs.json",
-    [string]$StackName = "CrossyRoadWebStack-production"
+    [string]$StackName = "CrossyRoadWebStack-production",
+    [string]$BucketName,
+    [string]$DistributionId,
+    [string]$GameUrl
 )
 
 $ErrorActionPreference = "Stop"
 
 $resolvedBuildPath = (Resolve-Path -LiteralPath $BuildPath).Path
-$resolvedOutputsPath = (Resolve-Path -LiteralPath $OutputsPath).Path
 $indexPath = Join-Path $resolvedBuildPath "index.html"
 
 if (-not (Test-Path -LiteralPath $indexPath -PathType Leaf)) {
     throw "Unity Web build is missing index.html: $resolvedBuildPath"
 }
 
-$outputs = Get-Content -LiteralPath $resolvedOutputsPath -Raw |
-    ConvertFrom-Json
-$stackOutputs = $outputs.$StackName
+if (-not $BucketName -or -not $DistributionId -or -not $GameUrl) {
+    $resolvedOutputsPath = (Resolve-Path -LiteralPath $OutputsPath).Path
+    $outputs = Get-Content -LiteralPath $resolvedOutputsPath -Raw |
+        ConvertFrom-Json
+    $stackOutputs = $outputs.$StackName
 
-if ($null -eq $stackOutputs) {
-    throw "Stack outputs not found: $StackName"
+    if ($null -eq $stackOutputs) {
+        throw "Stack outputs not found: $StackName"
+    }
+
+    $BucketName = $stackOutputs.WebBucketName
+    $DistributionId = $stackOutputs.CloudFrontDistributionId
+    $GameUrl = $stackOutputs.GameUrl
 }
 
-$bucketName = $stackOutputs.WebBucketName
-$distributionId = $stackOutputs.CloudFrontDistributionId
-$gameUrl = $stackOutputs.GameUrl
-
-if (-not $bucketName -or -not $distributionId -or -not $gameUrl) {
+if (-not $BucketName -or -not $DistributionId -or -not $GameUrl) {
     throw "Web deployment outputs are incomplete."
 }
 
-Write-Host "Publishing $resolvedBuildPath to s3://$bucketName"
-& aws s3 sync $resolvedBuildPath "s3://$bucketName" `
+Write-Host "Publishing $resolvedBuildPath to s3://$BucketName"
+& aws s3 sync $resolvedBuildPath "s3://$BucketName" `
     --delete `
     --cache-control "no-cache" `
     --only-show-errors
@@ -59,7 +64,7 @@ foreach ($file in $compressedFiles) {
         default { "application/octet-stream" }
     }
 
-    & aws s3 cp $file.FullName "s3://$bucketName/$relativePath" `
+    & aws s3 cp $file.FullName "s3://$BucketName/$relativePath" `
         --content-type $contentType `
         --content-encoding "br" `
         --cache-control "public,max-age=31536000,immutable" `
@@ -71,7 +76,7 @@ foreach ($file in $compressedFiles) {
 }
 
 $invalidationId = & aws cloudfront create-invalidation `
-    --distribution-id $distributionId `
+    --distribution-id $DistributionId `
     --paths "/*" `
     --query "Invalidation.Id" `
     --output text
@@ -82,11 +87,11 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Waiting for CloudFront invalidation $invalidationId"
 & aws cloudfront wait invalidation-completed `
-    --distribution-id $distributionId `
+    --distribution-id $DistributionId `
     --id $invalidationId
 
 if ($LASTEXITCODE -ne 0) {
     throw "CloudFront invalidation wait failed with exit code $LASTEXITCODE."
 }
 
-Write-Host "Published successfully: $gameUrl"
+Write-Host "Published successfully: $GameUrl"

@@ -73,7 +73,9 @@ public static class CrossyRoadInfrastructure
             app,
             settings.StackName("Ci"),
             settings,
-            Props());
+            Props(),
+            web);
+        ci.AddStackDependency(web);
 
         return new CrossyRoadStacks(
             data,

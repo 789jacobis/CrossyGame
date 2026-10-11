@@ -1,0 +1,100 @@
+name: Build and Deploy WebGL
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - Assets/**
+      - Packages/**
+      - ProjectSettings/**
+      - .github/workflows/deploy-webgl.yml
+      - infrastructure/scripts/Publish-WebBuild.ps1
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: webgl-production
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    if: github.event_name == 'workflow_dispatch' || vars.ENABLE_WEBGL_AUTO_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-WebGL-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-WebGL-
+
+      - name: Build production WebGL player
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: auto
+          targetPlatform: WebGL
+          buildMethod: BuildAutomation.BuildWebProduction
+          versioning: None
+
+      - name: Validate WebGL output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath "Builds/Release/index.html" -PathType Leaf)) {
+            throw "Unity build did not produce Builds/Release/index.html"
+          }
+
+      - name: Preserve WebGL build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrossTheRoad-WebGL-${{ github.sha }}
+          path: Builds/Release
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::237076104892:role/CrossyRoad-GitHubActions-production
+          aws-region: ap-northeast-1
+
+      - name: Read production web stack outputs
+        id: web
+        shell: bash
+        run: |
+          set -euo pipefail
+          stack="CrossyRoadWebStack-production"
+          bucket="$(aws cloudformation describe-stacks --stack-name "$stack" --query "Stacks[0].Outputs[?OutputKey=='WebBucketName'].OutputValue | [0]" --output text)"
+          distribution="$(aws cloudformation describe-stacks --stack-name "$stack" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue | [0]" --output text)"
+          url="$(aws cloudformation describe-stacks --stack-name "$stack" --query "Stacks[0].Outputs[?OutputKey=='GameUrl'].OutputValue | [0]" --output text)"
+          test "$bucket" != "None"
+          test "$distribution" != "None"
+          test "$url" != "None"
+          echo "bucket=$bucket" >> "$GITHUB_OUTPUT"
+          echo "distribution=$distribution" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to S3 and invalidate CloudFront
+        shell: pwsh
+        run: |
+          ./infrastructure/scripts/Publish-WebBuild.ps1 `
+            -BuildPath "Builds/Release" `
+            -BucketName "${{ steps.web.outputs.bucket }}" `
+            -DistributionId "${{ steps.web.outputs.distribution }}" `
+            -GameUrl "${{ steps.web.outputs.url }}"
+
+      - name: Verify public game
+        shell: bash
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 5 "${{ steps.web.outputs.url }}/index.html" > /dev/null

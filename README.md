@@ -156,8 +156,10 @@ ProjectSettings/    Unity 專案設定
 4. Player Settings 的預設 Canvas 建議使用 `960 × 540`。
 5. 關閉 Development Build，將 Code Optimization 設為 Runtime Speed。
 6. 按下 Build，輸出到被 Git 忽略的 `Builds/Release/` 資料夾。
-7. 執行 `infrastructure/scripts/Publish-WebBuild.ps1` 同步至 S3 並清除 CloudFront 快取；也可將 `Release` 壓成 ZIP 後更新 itch.io。
+7. 執行 `infrastructure/scripts/Publish-WebBuild.ps1` 同步至 S3 並清除 CloudFront 快取；也可在 GitHub Actions 手動執行 `Build and Deploy WebGL`，由 CI 完成建置與發布。
 8. 使用本機 HTTP server 或網站平台提供服務；Web Build 不能直接以 `file://` 正確執行。
+
+GitHub Actions 需要 repository secrets `UNITY_LICENSE`、`UNITY_EMAIL`、`UNITY_PASSWORD`。`UNITY_LICENSE` 是本機 Unity Hub 啟用後的 `C:\ProgramData\Unity\Unity_lic.ulf` 內容。設定 repository variable `ENABLE_WEBGL_AUTO_DEPLOY=true` 後，`main` 分支中的 Unity 專案檔案變更會自動建置並發布；未設定時仍可從 Actions 頁面手動執行。
 
 ## 後端取捨與安全性
 
