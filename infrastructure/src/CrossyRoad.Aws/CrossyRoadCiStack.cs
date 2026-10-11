@@ -62,6 +62,7 @@ public sealed class CrossyRoadCiStack : CrossyRoadStack
         }));
 
         web.WebBucket.GrantReadWrite(deployRole);
+        web.RollbackBucket.GrantReadWrite(deployRole);
 
         deployRole.AddToPolicy(new PolicyStatement(new PolicyStatementProps
         {

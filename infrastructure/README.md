@@ -18,7 +18,7 @@ npm run list
 npm run synth
 ```
 
-The Web stack provisions a private, encrypted, versioned S3 bucket and exposes it only through an HTTPS CloudFront distribution using Origin Access Control (OAC). Stack outputs provide the bucket name, distribution ID, and game URL used by the deployment workflow.
+The Web stack provisions a private, encrypted, versioned S3 bucket and exposes it only through an HTTPS CloudFront distribution using Origin Access Control (OAC). A second private S3 bucket stores pre-deployment rollback snapshots for 30 days. Stack outputs provide both bucket names, the distribution ID, and the game URL used by the deployment workflows.
 
 After deploying the Web stack, publish a Unity Web build and invalidate the CDN cache with:
 
@@ -29,6 +29,8 @@ After deploying the Web stack, publish a Unity Web build and invalidate the CDN 
 The script reads `cdk-outputs.json`, synchronizes `../Builds/Release`, and assigns the required Brotli content encoding and MIME types to Unity's compressed build artifacts.
 
 The `Build and Deploy WebGL` GitHub Actions workflow builds the same production player with Unity, stores a 14-day workflow artifact, assumes the OIDC deployment role, reads the Web stack outputs, publishes to S3, invalidates CloudFront, and verifies the public `index.html`. It requires the `UNITY_LICENSE`, `UNITY_EMAIL`, and `UNITY_PASSWORD` repository secrets. Set the repository variable `ENABLE_WEBGL_AUTO_DEPLOY=true` to publish Unity changes pushed to `main`; otherwise the workflow remains available through manual dispatch.
+
+Before replacing the live WebGL files, the publish script copies the current release to the private rollback bucket. The `Roll Back WebGL` workflow restores the newest snapshot when run with an empty `release_id`, or a named snapshot when an ID is supplied. It preserves the current live release before restoring, invalidates CloudFront, and verifies the public page.
 
 The production backend includes an anonymous Cognito Identity Pool, protected on-demand DynamoDB tables, an IAM-authorized HTTP API with default throttling, and a .NET 10 Lambda that reuses the shared score-validation domain. The monitoring stack adds a US$5 budget with US$1/3/5 thresholds, four operational CloudWatch alarms, and SNS email delivery. Publish the Lambda project to `.artifacts/backend` before synthesizing or deploying the API stack.
 

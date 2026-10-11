@@ -10,6 +10,7 @@ on:
       - ProjectSettings/**
       - .github/workflows/deploy-webgl.yml
       - infrastructure/scripts/Publish-WebBuild.ps1
+      - infrastructure/scripts/Rollback-WebBuild.ps1
 
 permissions:
   contents: read
@@ -78,11 +79,14 @@ jobs:
           stack="CrossyRoadWebStack-production"
           bucket="$(aws cloudformation describe-stacks --stack-name "$stack" --query "Stacks[0].Outputs[?OutputKey=='WebBucketName'].OutputValue | [0]" --output text)"
           distribution="$(aws cloudformation describe-stacks --stack-name "$stack" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue | [0]" --output text)"
+          rollback_bucket="$(aws cloudformation describe-stacks --stack-name "$stack" --query "Stacks[0].Outputs[?OutputKey=='WebRollbackBucketName'].OutputValue | [0]" --output text)"
           url="$(aws cloudformation describe-stacks --stack-name "$stack" --query "Stacks[0].Outputs[?OutputKey=='GameUrl'].OutputValue | [0]" --output text)"
           test "$bucket" != "None"
+          test "$rollback_bucket" != "None"
           test "$distribution" != "None"
           test "$url" != "None"
           echo "bucket=$bucket" >> "$GITHUB_OUTPUT"
+          echo "rollback_bucket=$rollback_bucket" >> "$GITHUB_OUTPUT"
           echo "distribution=$distribution" >> "$GITHUB_OUTPUT"
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
@@ -92,8 +96,10 @@ jobs:
           ./infrastructure/scripts/Publish-WebBuild.ps1 `
             -BuildPath "Builds/Release" `
             -BucketName "${{ steps.web.outputs.bucket }}" `
+            -RollbackBucketName "${{ steps.web.outputs.rollback_bucket }}" `
             -DistributionId "${{ steps.web.outputs.distribution }}" `
-            -GameUrl "${{ steps.web.outputs.url }}"
+            -GameUrl "${{ steps.web.outputs.url }}" `
+            -ReleaseId "$(Get-Date -AsUTC -Format 'yyyyMMddTHHmmssZ')-${{ github.sha }}"
 
       - name: Verify public game
         shell: bash

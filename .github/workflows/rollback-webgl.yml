@@ -1,0 +1,65 @@
+name: Roll Back WebGL
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Optional snapshot ID; blank restores the most recent previous release
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: webgl-production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::237076104892:role/CrossyRoad-GitHubActions-production
+          aws-region: ap-northeast-1
+
+      - name: Read production web stack outputs
+        id: web
+        shell: bash
+        run: |
+          set -euo pipefail
+          stack="CrossyRoadWebStack-production"
+          bucket="$(aws cloudformation describe-stacks --stack-name "$stack" --query "Stacks[0].Outputs[?OutputKey=='WebBucketName'].OutputValue | [0]" --output text)"
+          rollback_bucket="$(aws cloudformation describe-stacks --stack-name "$stack" --query "Stacks[0].Outputs[?OutputKey=='WebRollbackBucketName'].OutputValue | [0]" --output text)"
+          distribution="$(aws cloudformation describe-stacks --stack-name "$stack" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue | [0]" --output text)"
+          url="$(aws cloudformation describe-stacks --stack-name "$stack" --query "Stacks[0].Outputs[?OutputKey=='GameUrl'].OutputValue | [0]" --output text)"
+          test "$bucket" != "None"
+          test "$rollback_bucket" != "None"
+          test "$distribution" != "None"
+          test "$url" != "None"
+          echo "bucket=$bucket" >> "$GITHUB_OUTPUT"
+          echo "rollback_bucket=$rollback_bucket" >> "$GITHUB_OUTPUT"
+          echo "distribution=$distribution" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Restore previous WebGL release
+        shell: pwsh
+        run: |
+          ./infrastructure/scripts/Rollback-WebBuild.ps1 `
+            -ReleaseId "${{ inputs.release_id }}" `
+            -BucketName "${{ steps.web.outputs.bucket }}" `
+            -RollbackBucketName "${{ steps.web.outputs.rollback_bucket }}" `
+            -DistributionId "${{ steps.web.outputs.distribution }}" `
+            -GameUrl "${{ steps.web.outputs.url }}"
+
+      - name: Verify public game
+        shell: bash
+        run: curl --fail --silent --show-error --retry 5 --retry-delay 5 "${{ steps.web.outputs.url }}/index.html" > /dev/null

@@ -10,6 +10,8 @@ public sealed class CrossyRoadWebStack : CrossyRoadStack
 {
     public Bucket WebBucket { get; }
 
+    public Bucket RollbackBucket { get; }
+
     public Distribution WebDistribution { get; }
 
     public CrossyRoadWebStack(
@@ -32,6 +34,23 @@ public sealed class CrossyRoadWebStack : CrossyRoadStack
                 new LifecycleRule
                 {
                     NoncurrentVersionExpiration = Duration.Days(30)
+                }
+            ]
+        });
+
+        RollbackBucket = new Bucket(this, "WebRollbackArchives", new BucketProps
+        {
+            BlockPublicAccess = BlockPublicAccess.BLOCK_ALL,
+            Encryption = BucketEncryption.S3_MANAGED,
+            EnforceSSL = true,
+            RemovalPolicy = RemovalPolicy.RETAIN,
+            AutoDeleteObjects = false,
+            LifecycleRules =
+            [
+                new LifecycleRule
+                {
+                    Expiration = Duration.Days(30),
+                    AbortIncompleteMultipartUploadAfter = Duration.Days(1)
                 }
             ]
         });
@@ -67,6 +86,12 @@ public sealed class CrossyRoadWebStack : CrossyRoadStack
         {
             Description = "CloudFront distribution ID used for cache invalidation.",
             Value = WebDistribution.DistributionId
+        });
+
+        _ = new CfnOutput(this, "WebRollbackBucketName", new CfnOutputProps
+        {
+            Description = "Private S3 bucket containing recent WebGL rollback snapshots.",
+            Value = RollbackBucket.BucketName
         });
 
         _ = new CfnOutput(this, "GameUrl", new CfnOutputProps

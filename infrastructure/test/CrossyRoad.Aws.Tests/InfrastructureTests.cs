@@ -143,7 +143,28 @@ public sealed class InfrastructureTests
             }
         });
 
-        template.ResourceCountIs("AWS::S3::Bucket", 1);
+        template.ResourceCountIs("AWS::S3::Bucket", 2);
+        template.HasResourceProperties(
+            "AWS::S3::Bucket",
+            Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["LifecycleConfiguration"] = Match.ObjectLike(
+                    new Dictionary<string, object>
+                    {
+                        ["Rules"] = Match.ArrayWith(
+                        [
+                            Match.ObjectLike(new Dictionary<string, object>
+                            {
+                                ["ExpirationInDays"] = 30,
+                                ["AbortIncompleteMultipartUpload"] =
+                                    new Dictionary<string, object>
+                                    {
+                                        ["DaysAfterInitiation"] = 1
+                                    }
+                            })
+                        ])
+                    })
+            }));
     }
 
     [Test]
@@ -180,6 +201,9 @@ public sealed class InfrastructureTests
         template.HasOutput("WebBucketName", new Dictionary<string, object>());
         template.HasOutput(
             "CloudFrontDistributionId",
+            new Dictionary<string, object>());
+        template.HasOutput(
+            "WebRollbackBucketName",
             new Dictionary<string, object>());
         template.HasOutput("GameUrl", new Dictionary<string, object>());
     }
@@ -430,6 +454,14 @@ public sealed class InfrastructureTests
                     {
                         ["Statement"] = Match.ArrayWith(
                         [
+                            Match.ObjectLike(new Dictionary<string, object>
+                            {
+                                ["Action"] = Match.ArrayWith(
+                                [
+                                    "s3:DeleteObject*",
+                                    "s3:PutObject"
+                                ])
+                            }),
                             Match.ObjectLike(new Dictionary<string, object>
                             {
                                 ["Action"] = Match.ArrayWith(

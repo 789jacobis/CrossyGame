@@ -8,6 +8,7 @@
 flowchart LR
     Player[玩家] --> CDN[CloudFront HTTPS]
     CDN --> Web[(私有 S3 Web Build)]
+    Web -. 發布前快照 .-> Rollback[(私有 S3 Rollback Archives)]
     CDN --> Client[Unity WebGL Client]
 
     subgraph ClientSide[Unity Client]
@@ -69,7 +70,7 @@ sequenceDiagram
 
 | Stack | 主要資源 |
 | --- | --- |
-| `CrossyRoadWebStack-production` | 私有 S3、CloudFront、OAC |
+| `CrossyRoadWebStack-production` | 私有 Web S3、30 天 rollback S3、CloudFront、OAC |
 | `CrossyRoadIdentityStack-production` | Cognito Identity Pool、Guest IAM Role |
 | `CrossyRoadApiStack-production` | HTTP API、.NET 10 Lambda、14 天 Log Group |
 | `CrossyRoadDataStack-production` | Runs 與 Scores DynamoDB Tables、排行榜 GSI |
@@ -79,7 +80,7 @@ sequenceDiagram
 ## 維運設定
 
 - 區域：`ap-northeast-1`（東京）。
-- API 限流：每秒 10 次、突發 20 次，並啟用 route detailed metrics。
+- API 限流：每秒 10 次、突發 20 次；為控制固定監控費用，未啟用 route detailed metrics。
 - 警報：Lambda Errors、Lambda Throttles、API 5xx、API p95 Latency。
 - 成本通知：每月實際費用達 US$1、US$3、US$5。
 - 正式環境 24 小時部署；Serverless 資源沒有流量時不產生常駐運算費。
@@ -88,9 +89,10 @@ sequenceDiagram
 
 - 基礎設施：`infrastructure/` 的 AWS CDK v2 C# 專案。
 - Lambda：`CrossyRoadServer/AwsBackend/`，共用驗證規則位於 `CrossyRoadServer/Domain/`。
-- Web 發布：`infrastructure/scripts/Publish-WebBuild.ps1` 上傳 S3 並建立 CloudFront invalidation。
+- Web 發布：`infrastructure/scripts/Publish-WebBuild.ps1` 保存上一版、上傳 S3 並建立 CloudFront invalidation。
+- Web 回復：`infrastructure/scripts/Rollback-WebBuild.ps1` 或 GitHub Actions `Roll Back WebGL` 一鍵回復最近快照。
 - 自動部署：GitHub Actions 透過 OIDC 取得短期 AWS 憑證；後端或 CDK 變更推送至 `main` 時部署 production stacks。
-- 自動測試：驗證領域 23 項、CDK assertions 12 項。
+- 自動測試：驗證領域 23 項、CDK assertions 13 項。
 - 健康檢查：`GET https://fpvx62ygkk.execute-api.ap-northeast-1.amazonaws.com/health`。
 
 ## 已知限制

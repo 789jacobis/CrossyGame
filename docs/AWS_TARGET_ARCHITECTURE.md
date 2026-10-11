@@ -27,11 +27,13 @@ flowchart LR
         DNS[Route 53<br/>選用自訂網域]
         CDN[CloudFront<br/>HTTPS、CDN、快取]
         WebBucket[(S3 私有 Web Build Bucket)]
+        RollbackBucket[(S3 私有 Rollback Archives<br/>30 天保留)]
     end
 
     DNS -.-> CDN
     Browser --> CDN
     CDN -->|OAC 唯一讀取來源| WebBucket
+    WebBucket -. 發布前快照 .-> RollbackBucket
     CDN --> Client[Unity WebGL Client]
 
     subgraph Identity[玩家身分]
@@ -193,7 +195,7 @@ sequenceDiagram
 | `CrossyRoadDataStack-production` | DynamoDB Table | `RETAIN`、刪除保護 |
 | `CrossyRoadIdentityStack-production` | Cognito Identity Pool、Guest IAM Role | 可重建，但 production 不自動刪除 |
 | `CrossyRoadApiStack-production` | HTTP API、Lambda、Log Group | 可重建 |
-| `CrossyRoadWebStack-production` | S3 Web Bucket、CloudFront Distribution、OAC | Bucket 保留，其餘可重建 |
+| `CrossyRoadWebStack-production` | S3 Web Bucket、30 天 Rollback Bucket、CloudFront Distribution、OAC | Buckets 保留，其餘可重建 |
 | `CrossyRoadDnsStack-production`（選用） | Route 53 Records、ACM Certificate | 加入自訂網域時建立 |
 | `CrossyRoadMonitoringStack-production` | Budgets、CloudWatch Alarms、SNS | 可重建 |
 | `CrossyRoadCiStack-production` | GitHub OIDC Provider、限定 repository/main 的部署角色 | 可重建，但不由該角色自我更新 |
