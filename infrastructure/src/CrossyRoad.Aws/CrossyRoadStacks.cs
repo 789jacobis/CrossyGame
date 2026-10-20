@@ -39,6 +39,8 @@ public sealed class CrossyRoadDataStack : CrossyRoadStack
 
     public Table ScoresTable { get; }
 
+    public Table NamesTable { get; }
+
     public CrossyRoadDataStack(
         Construct scope,
         string id,
@@ -107,6 +109,23 @@ public sealed class CrossyRoadDataStack : CrossyRoadStack
             ProjectionType = ProjectionType.ALL
         });
 
+        NamesTable = new Table(this, "Names", new TableProps
+        {
+            PartitionKey = new DynamoAttribute
+            {
+                Name = "RecordKey",
+                Type = AttributeType.STRING
+            },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            Encryption = TableEncryption.AWS_MANAGED,
+            PointInTimeRecoverySpecification = new PointInTimeRecoverySpecification
+            {
+                PointInTimeRecoveryEnabled = true
+            },
+            DeletionProtection = true,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
         _ = new CfnOutput(this, "RunsTableName", new CfnOutputProps
         {
             Value = RunsTable.TableName
@@ -115,6 +134,11 @@ public sealed class CrossyRoadDataStack : CrossyRoadStack
         _ = new CfnOutput(this, "ScoresTableName", new CfnOutputProps
         {
             Value = ScoresTable.TableName
+        });
+
+        _ = new CfnOutput(this, "NamesTableName", new CfnOutputProps
+        {
+            Value = NamesTable.TableName
         });
     }
 }

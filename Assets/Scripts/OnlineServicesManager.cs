@@ -73,6 +73,17 @@ public sealed class OnlineServicesManager : MonoBehaviour
         return !string.IsNullOrWhiteSpace(activeRunId);
     }
 
+    public async Task<string> ClaimDisplayNameAsync(string displayName)
+    {
+        await InitializeAsync();
+        if (!IsReady)
+        {
+            throw new InvalidOperationException("AWS services are unavailable.");
+        }
+
+        return await GameBackend.ClaimDisplayNameAsync(displayName);
+    }
+
     public async Task<bool> SubmitRunScoreAsync(int score)
     {
         if (score <= 0)
@@ -105,8 +116,20 @@ public sealed class OnlineServicesManager : MonoBehaviour
                 return false;
             }
 
-            string displayName =
-                PlayerProfileManager.Instance?.DisplayName ?? "Player";
+            PlayerProfileManager profile = PlayerProfileManager.Instance;
+            if (profile != null)
+            {
+                await profile.InitializeAsync();
+            }
+            if (profile == null || !profile.IsNameConfirmed)
+            {
+                Debug.LogWarning(
+                    "Score was not submitted because the player name " +
+                    "has not been confirmed by the server.", this);
+                return false;
+            }
+
+            string displayName = profile.DisplayName;
             bool accepted = await GameBackend.SubmitRunScoreAsync(
                 activeRunId,
                 score,

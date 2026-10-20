@@ -219,7 +219,7 @@ public sealed class InfrastructureTests
             new StackProps());
         Template template = Template.FromStack(stack);
 
-        template.ResourceCountIs("AWS::DynamoDB::Table", 2);
+        template.ResourceCountIs("AWS::DynamoDB::Table", 3);
         template.HasResourceProperties(
             "AWS::DynamoDB::Table",
             Match.ObjectLike(new Dictionary<string, object>
@@ -233,6 +233,7 @@ public sealed class InfrastructureTests
             }));
         template.HasOutput("RunsTableName", new Dictionary<string, object>());
         template.HasOutput("ScoresTableName", new Dictionary<string, object>());
+        template.HasOutput("NamesTableName", new Dictionary<string, object>());
     }
 
     [Test]
@@ -300,7 +301,7 @@ public sealed class InfrastructureTests
                 })
             }));
         template.ResourceCountIs("AWS::ApiGatewayV2::Api", 1);
-        template.ResourceCountIs("AWS::ApiGatewayV2::Route", 4);
+        template.ResourceCountIs("AWS::ApiGatewayV2::Route", 5);
         template.HasResourceProperties(
             "AWS::IAM::Policy",
             Match.ObjectLike(new Dictionary<string, object>

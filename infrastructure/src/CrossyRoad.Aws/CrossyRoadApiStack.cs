@@ -45,12 +45,15 @@ public sealed class CrossyRoadApiStack : CrossyRoadStack
             Environment = new Dictionary<string, string>
             {
                 ["RUNS_TABLE_NAME"] = data.RunsTable.TableName,
-                ["SCORES_TABLE_NAME"] = data.ScoresTable.TableName
+                ["SCORES_TABLE_NAME"] = data.ScoresTable.TableName,
+                ["NAMES_TABLE_NAME"] = data.NamesTable.TableName
             }
         });
 
         data.RunsTable.GrantReadWriteData(Handler);
         data.ScoresTable.GrantReadWriteData(Handler);
+
+        data.NamesTable.GrantReadWriteData(Handler);
 
         var integration = new HttpLambdaIntegration(
             "GameBackendIntegration",
@@ -62,7 +65,7 @@ public sealed class CrossyRoadApiStack : CrossyRoadStack
             CorsPreflight = new CorsPreflightOptions
             {
                 AllowOrigins = ["*"],
-                AllowMethods = [CorsHttpMethod.GET, CorsHttpMethod.POST],
+                AllowMethods = [CorsHttpMethod.GET, CorsHttpMethod.POST, CorsHttpMethod.PUT],
                 AllowHeaders =
                 [
                     "content-type",
@@ -86,7 +89,8 @@ public sealed class CrossyRoadApiStack : CrossyRoadStack
         {
             ("/runs", ApiHttpMethod.POST),
             ("/scores", ApiHttpMethod.POST),
-            ("/leaderboard", ApiHttpMethod.GET)
+            ("/leaderboard", ApiHttpMethod.GET),
+            ("/profile/name", ApiHttpMethod.PUT)
         })
         {
             Api.AddRoutes(new AddRoutesOptions

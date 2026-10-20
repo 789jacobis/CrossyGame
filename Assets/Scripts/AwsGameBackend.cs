@@ -80,6 +80,16 @@ public sealed class AwsGameBackend : IGameBackend
         return response.runId;
     }
 
+    public async Task<string> ClaimDisplayNameAsync(string displayName)
+    {
+        var request = new NameRequest { displayName = displayName };
+        NameResponse response = await SendApiAsync<NameResponse>(
+            UnityWebRequest.kHttpVerbPUT,
+            "/profile/name",
+            JsonUtility.ToJson(request));
+        return response.displayName;
+    }
+
     public async Task<bool> SubmitRunScoreAsync(
         string runId,
         int score,
@@ -184,7 +194,8 @@ public sealed class AwsGameBackend : IGameBackend
         await SendWebRequestAsync(request);
         if (request.result != UnityWebRequest.Result.Success)
         {
-            throw new InvalidOperationException(
+            throw new GameBackendApiException(
+                request.responseCode,
                 $"AWS API request failed ({request.responseCode}): " +
                 request.downloadHandler.text);
         }
@@ -343,6 +354,18 @@ public sealed class AwsGameBackend : IGameBackend
     {
         public string runId;
         public int score;
+        public string displayName;
+    }
+
+    [Serializable]
+    private sealed class NameRequest
+    {
+        public string displayName;
+    }
+
+    [Serializable]
+    private sealed class NameResponse
+    {
         public string displayName;
     }
 

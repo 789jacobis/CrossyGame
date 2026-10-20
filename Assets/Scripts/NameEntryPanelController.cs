@@ -35,7 +35,9 @@ public sealed class NameEntryPanelController : MonoBehaviour
 
         if (activeInstance == null ||
             profile == null ||
-            profile.HasChosenName)
+            (profile.HasChosenName &&
+             (profile.IsNameConfirmed ||
+              OnlineServicesManager.Instance?.IsReady != true)))
         {
             return false;
         }
@@ -172,7 +174,7 @@ public sealed class NameEntryPanelController : MonoBehaviour
             }
         }
 
-        ShowError(string.Empty);
+        ShowError(profile.LastError);
         SelectInput();
     }
 

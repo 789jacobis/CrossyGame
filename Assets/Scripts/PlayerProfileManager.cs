@@ -21,6 +21,7 @@ public sealed class PlayerProfileManager : MonoBehaviour
     public string DisplayName { get; private set; } = string.Empty;
     public string DefaultDisplayName { get; private set; } = string.Empty;
     public bool HasChosenName { get; private set; }
+    public bool IsNameConfirmed { get; private set; }
     public bool IsInitialized { get; private set; }
     public bool IsSyncing { get; private set; }
     public string LastError { get; private set; } = string.Empty;
@@ -100,9 +101,42 @@ public sealed class PlayerProfileManager : MonoBehaviour
             return false;
         }
 
-        SaveLocalName(cleanedName);
-        await TrySyncPendingNameAsync();
-        return true;
+        await InitializeAsync();
+        OnlineServicesManager onlineServices = OnlineServicesManager.Instance;
+        if (onlineServices == null || !onlineServices.IsReady)
+        {
+            // A globally unique name cannot be confirmed while offline.
+            LastError = "目前無法連線，請稍後再試。";
+            ProfileChanged?.Invoke();
+            return false;
+        }
+
+        try
+        {
+            IsSyncing = true;
+            string confirmedName = await onlineServices
+                .ClaimDisplayNameAsync(cleanedName);
+            SaveLocalName(confirmedName, true);
+            return true;
+        }
+        catch (GameBackendApiException exception)
+        {
+            LastError = exception.StatusCode == 409
+                ? "名稱已被使用，請換一個。"
+                : "無法驗證名稱，請稍後重試。";
+            ProfileChanged?.Invoke();
+            return false;
+        }
+        catch (Exception)
+        {
+            LastError = "無法連線驗證名稱，請稍後重試。";
+            ProfileChanged?.Invoke();
+            return false;
+        }
+        finally
+        {
+            IsSyncing = false;
+        }
     }
 
     public Task<bool> UseDefaultNameAsync()
@@ -128,6 +162,7 @@ public sealed class PlayerProfileManager : MonoBehaviour
         DefaultDisplayName = LoadOrCreateDefaultName();
         DisplayName = DefaultDisplayName;
         HasChosenName = false;
+        IsNameConfirmed = false;
         LastError = string.Empty;
 
         ProfileChanged?.Invoke();
@@ -157,14 +192,11 @@ public sealed class PlayerProfileManager : MonoBehaviour
         ProfileChanged?.Invoke();
     }
 
-    private Task TrySyncPendingNameAsync()
+    private async Task TrySyncPendingNameAsync()
     {
-        string pendingName =
-            PlayerPrefs.GetString(PendingNameKey, string.Empty);
-
-        if (string.IsNullOrEmpty(pendingName))
+        if (!HasChosenName)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         OnlineServicesManager onlineServices =
@@ -175,27 +207,56 @@ public sealed class PlayerProfileManager : MonoBehaviour
             LastError =
                 "目前離線，玩家名稱會在下次連線時自動同步。";
             ProfileChanged?.Invoke();
-            return Task.CompletedTask;
+            return;
         }
 
-        // AWS stores the display name together with the player's best score,
-        // so there is no separate profile write to synchronize.
-        PlayerPrefs.DeleteKey(PendingNameKey);
-        PlayerPrefs.Save();
-        LastError = string.Empty;
-        ProfileChanged?.Invoke();
-        return Task.CompletedTask;
+        try
+        {
+            IsSyncing = true;
+            string confirmedName = await onlineServices
+                .ClaimDisplayNameAsync(DisplayName);
+            SaveLocalName(confirmedName, true);
+        }
+        catch (GameBackendApiException exception)
+        {
+            HasChosenName = false;
+            IsNameConfirmed = false;
+            PlayerPrefs.SetInt(HasChosenNameKey, 0);
+            PlayerPrefs.Save();
+            LastError = exception.StatusCode == 409
+                ? "名稱已被使用，請換一個。"
+                : "無法驗證名稱，請稍後重試。";
+            ProfileChanged?.Invoke();
+        }
+        catch (Exception)
+        {
+            IsNameConfirmed = false;
+            LastError = "無法連線驗證名稱，請稍後重試。";
+            ProfileChanged?.Invoke();
+        }
+        finally
+        {
+            IsSyncing = false;
+        }
     }
 
-    private void SaveLocalName(string displayName)
+    private void SaveLocalName(string displayName, bool confirmed)
     {
         DisplayName = displayName;
         HasChosenName = true;
+        IsNameConfirmed = confirmed;
         LastError = string.Empty;
 
         PlayerPrefs.SetString(DisplayNameKey, DisplayName);
         PlayerPrefs.SetInt(HasChosenNameKey, 1);
-        PlayerPrefs.SetString(PendingNameKey, DisplayName);
+        if (confirmed)
+        {
+            PlayerPrefs.DeleteKey(PendingNameKey);
+        }
+        else
+        {
+            PlayerPrefs.SetString(PendingNameKey, DisplayName);
+        }
         PlayerPrefs.Save();
 
         ProfileChanged?.Invoke();

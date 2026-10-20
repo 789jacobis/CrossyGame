@@ -20,23 +20,27 @@ public sealed class Function
     private readonly IAmazonDynamoDB dynamoDb;
     private readonly string runsTable;
     private readonly string scoresTable;
+    private readonly string namesTable;
 
     public Function()
         : this(
             new AmazonDynamoDBClient(),
             RequireEnvironment("RUNS_TABLE_NAME"),
-            RequireEnvironment("SCORES_TABLE_NAME"))
+            RequireEnvironment("SCORES_TABLE_NAME"),
+            RequireEnvironment("NAMES_TABLE_NAME"))
     {
     }
 
     internal Function(
         IAmazonDynamoDB dynamoDb,
         string runsTable,
-        string scoresTable)
+        string scoresTable,
+        string namesTable)
     {
         this.dynamoDb = dynamoDb;
         this.runsTable = runsTable;
         this.scoresTable = scoresTable;
+        this.namesTable = namesTable;
     }
 
     public async Task<ApiResponse> FunctionHandler(
@@ -60,6 +64,7 @@ public sealed class Function
                 ("POST", "/runs") => await StartRunAsync(playerId),
                 ("POST", "/scores") => await SubmitScoreAsync(playerId, request),
                 ("GET", "/leaderboard") => await GetLeaderboardAsync(),
+                ("PUT", "/profile/name") => await ClaimNameAsync(playerId, request),
                 _ => Json(HttpStatusCode.NotFound, new { error = "Route not found." })
             };
         }
@@ -75,6 +80,14 @@ public sealed class Function
         catch (UnauthorizedAccessException exception)
         {
             return Json(HttpStatusCode.Unauthorized, new { error = exception.Message });
+        }
+        catch (PlayerNameRequiredException)
+        {
+            return Json(HttpStatusCode.Conflict, new
+            {
+                error = "NameRequired",
+                message = "Choose an available player name before submitting a score."
+            });
         }
         catch (Exception exception)
         {
@@ -108,6 +121,19 @@ public sealed class Function
     private async Task<ApiResponse> SubmitScoreAsync(string playerId, JsonElement request)
     {
         ScoreRequest body = DeserializeBody<ScoreRequest>(request);
+        string displayName = await GetRegisteredNameAsync(playerId);
+        if (string.IsNullOrEmpty(displayName))
+        {
+            // Older WebGL builds do not call /profile/name. Allow them to
+            // register their name through the same atomic reservation path.
+            ApiResponse claim = await ClaimNameAsync(playerId, request);
+            if (claim.StatusCode != (int)HttpStatusCode.OK ||
+                !PlayerNamePolicy.TryNormalize(
+                    body.DisplayName, out displayName, out _))
+            {
+                throw new PlayerNameRequiredException();
+            }
+        }
         Dictionary<string, AttributeValue> key = new()
         {
             ["PlayerId"] = new(playerId),
@@ -158,16 +184,16 @@ public sealed class Function
             }
         });
 
-        await SaveBestScoreAsync(playerId, body);
+        await SaveBestScoreAsync(playerId, body.Score, displayName);
         return Json(HttpStatusCode.OK, new { accepted = true });
     }
 
-    private async Task SaveBestScoreAsync(string playerId, ScoreRequest body)
+    private async Task SaveBestScoreAsync(
+        string playerId,
+        int score,
+        string displayName)
     {
-        string displayName = string.IsNullOrWhiteSpace(body.DisplayName)
-            ? "Player"
-            : body.DisplayName.Trim()[..Math.Min(24, body.DisplayName.Trim().Length)];
-        string rank = $"{100_000 - body.Score:D6}#{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():D13}#{playerId}";
+        string rank = $"{100_000 - score:D6}#{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds():D13}#{playerId}";
 
         try
         {
@@ -178,14 +204,14 @@ public sealed class Function
                 {
                     ["LeaderboardId"] = new(LeaderboardId),
                     ["PlayerId"] = new(playerId),
-                    ["Score"] = new() { N = body.Score.ToString() },
+                    ["Score"] = new() { N = score.ToString() },
                     ["ScoreRank"] = new(rank),
                     ["DisplayName"] = new(displayName)
                 },
                 ConditionExpression = "attribute_not_exists(Score) OR Score < :score",
                 ExpressionAttributeValues = new Dictionary<string, AttributeValue>
                 {
-                    [":score"] = new() { N = body.Score.ToString() }
+                    [":score"] = new() { N = score.ToString() }
                 }
             });
         }
@@ -195,30 +221,241 @@ public sealed class Function
         }
     }
 
-    private async Task<ApiResponse> GetLeaderboardAsync()
+    private async Task<ApiResponse> ClaimNameAsync(
+        string playerId,
+        JsonElement request)
     {
-        QueryResponse response = await dynamoDb.QueryAsync(new QueryRequest
+        NameRequest body = DeserializeBody<NameRequest>(request);
+        if (!PlayerNamePolicy.TryNormalize(
+                body.DisplayName, out string displayName, out string nameKey))
+        {
+            return Json(HttpStatusCode.BadRequest, new
+            {
+                error = "InvalidName",
+                message = "Name must contain 1–12 letters, digits, _ or -."
+            });
+        }
+
+        string profileRecordKey = $"PLAYER#{playerId}";
+        string reservationKey = $"NAME#{nameKey}";
+        GetItemResponse profile = await dynamoDb.GetItemAsync(new GetItemRequest
+        {
+            TableName = namesTable,
+            Key = NameRecordKey(profileRecordKey),
+            ConsistentRead = true
+        });
+        string? previousNameKey = profile.Item != null && profile.Item.TryGetValue(
+            "NameKey", out AttributeValue? previousName)
+            ? previousName.S : null;
+
+        if (profile.Item != null && previousNameKey == nameKey)
+        {
+            return Json(HttpStatusCode.OK, new
+            {
+                displayName = profile.Item["DisplayName"].S
+            });
+        }
+
+        var changes = new List<TransactWriteItem>
+        {
+            new()
+            {
+                Put = new Put
+                {
+                    TableName = namesTable,
+                    Item = new Dictionary<string, AttributeValue>
+                    {
+                        ["RecordKey"] = new(reservationKey),
+                        ["OwnerPlayerId"] = new(playerId)
+                    },
+                    ConditionExpression = "attribute_not_exists(RecordKey)"
+                }
+            }
+        };
+
+        if (previousNameKey is null)
+        {
+            changes.Add(new TransactWriteItem
+            {
+                Put = new Put
+                {
+                    TableName = namesTable,
+                    Item = new Dictionary<string, AttributeValue>
+                    {
+                        ["RecordKey"] = new(profileRecordKey),
+                        ["NameKey"] = new(nameKey),
+                        ["DisplayName"] = new(displayName)
+                    },
+                    ConditionExpression = "attribute_not_exists(RecordKey)"
+                }
+            });
+        }
+        else
+        {
+            changes.Add(new TransactWriteItem
+            {
+                Update = new Update
+                {
+                    TableName = namesTable,
+                    Key = NameRecordKey(profileRecordKey),
+                    UpdateExpression = "SET NameKey = :new, DisplayName = :display",
+                    ConditionExpression = "NameKey = :old",
+                    ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                    {
+                        [":new"] = new(nameKey),
+                        [":old"] = new(previousNameKey),
+                        [":display"] = new(displayName)
+                    }
+                }
+            });
+            changes.Add(new TransactWriteItem
+            {
+                Delete = new Delete
+                {
+                    TableName = namesTable,
+                    Key = NameRecordKey($"NAME#{previousNameKey}"),
+                    ConditionExpression = "OwnerPlayerId = :owner",
+                    ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                    {
+                        [":owner"] = new(playerId)
+                    }
+                }
+            });
+        }
+
+        GetItemResponse score = await dynamoDb.GetItemAsync(new GetItemRequest
         {
             TableName = scoresTable,
-            IndexName = "LeaderboardRankIndex",
-            KeyConditionExpression = "LeaderboardId = :id",
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            Key = new Dictionary<string, AttributeValue>
             {
-                [":id"] = new(LeaderboardId)
+                ["LeaderboardId"] = new(LeaderboardId),
+                ["PlayerId"] = new(playerId)
             },
-            ScanIndexForward = true,
-            Limit = 10
+            ConsistentRead = true
         });
-
-        var entries = response.Items.Select((item, index) => new
+        if (score.Item?.Count > 0)
         {
-            rank = index + 1,
-            playerId = item["PlayerId"].S,
-            displayName = item["DisplayName"].S,
-            score = int.Parse(item["Score"].N)
+            changes.Add(new TransactWriteItem
+            {
+                Update = new Update
+                {
+                    TableName = scoresTable,
+                    Key = new Dictionary<string, AttributeValue>
+                    {
+                        ["LeaderboardId"] = new(LeaderboardId),
+                        ["PlayerId"] = new(playerId)
+                    },
+                    UpdateExpression = "SET DisplayName = :display",
+                    ConditionExpression = "attribute_exists(PlayerId)",
+                    ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                    {
+                        [":display"] = new(displayName)
+                    }
+                }
+            });
+        }
+
+        try
+        {
+            await dynamoDb.TransactWriteItemsAsync(new TransactWriteItemsRequest
+            {
+                TransactItems = changes
+            });
+        }
+        catch (TransactionCanceledException exception) when (
+            exception.CancellationReasons?.Any(reason =>
+                reason.Code == "ConditionalCheckFailed") == true)
+        {
+            return Json(HttpStatusCode.Conflict, new
+            {
+                error = "NameUnavailable",
+                message = "This name is already in use or the profile changed."
+            });
+        }
+
+        return Json(HttpStatusCode.OK, new { displayName });
+    }
+
+    private async Task<string> GetRegisteredNameAsync(string playerId)
+    {
+        GetItemResponse response = await dynamoDb.GetItemAsync(new GetItemRequest
+        {
+            TableName = namesTable,
+            Key = NameRecordKey($"PLAYER#{playerId}"),
+            ConsistentRead = true
         });
+        if (response.Item == null || !response.Item.TryGetValue(
+                "DisplayName", out AttributeValue? displayName) ||
+            string.IsNullOrWhiteSpace(displayName.S))
+        {
+            return string.Empty;
+        }
+
+        return displayName.S;
+    }
+
+    private static Dictionary<string, AttributeValue> NameRecordKey(string key) =>
+        new() { ["RecordKey"] = new(key) };
+
+    private async Task<ApiResponse> GetLeaderboardAsync()
+    {
+        var entries = new List<LeaderboardEntryResponse>();
+        var seenNames = new HashSet<string>(StringComparer.Ordinal);
+        Dictionary<string, AttributeValue>? nextKey = null;
+
+        do
+        {
+            QueryResponse response = await dynamoDb.QueryAsync(new QueryRequest
+            {
+                TableName = scoresTable,
+                IndexName = "LeaderboardRankIndex",
+                KeyConditionExpression = "LeaderboardId = :id",
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":id"] = new(LeaderboardId)
+                },
+                ScanIndexForward = true,
+                Limit = 25,
+                ExclusiveStartKey = nextKey
+            });
+
+            foreach (Dictionary<string, AttributeValue> item in response.Items)
+            {
+                string displayName = item["DisplayName"].S;
+                string normalizedName = displayName.Trim()
+                    .Normalize(System.Text.NormalizationForm.FormKC)
+                    .ToUpperInvariant();
+                if (!seenNames.Add(normalizedName))
+                {
+                    continue;
+                }
+
+                entries.Add(new LeaderboardEntryResponse(
+                    entries.Count + 1,
+                    item["PlayerId"].S,
+                    displayName,
+                    int.Parse(item["Score"].N)));
+                if (entries.Count == 10)
+                {
+                    break;
+                }
+            }
+
+            nextKey = response.LastEvaluatedKey;
+        }
+        while (entries.Count < 10 && nextKey?.Count > 0);
 
         return Json(HttpStatusCode.OK, new { entries });
+    }
+
+    private sealed record LeaderboardEntryResponse(
+        int Rank,
+        string PlayerId,
+        string DisplayName,
+        int Score);
+
+    private sealed class PlayerNameRequiredException : Exception
+    {
     }
 
     private static T DeserializeBody<T>(JsonElement request)
@@ -279,6 +516,8 @@ public sealed class Function
         ?? throw new InvalidOperationException($"Missing environment variable: {name}");
 
     private sealed record ScoreRequest(string? RunId, int Score, string? DisplayName);
+
+    private sealed record NameRequest(string? DisplayName);
 }
 
 public sealed class ApiResponse
