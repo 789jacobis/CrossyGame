@@ -26,37 +26,49 @@ public sealed class AwsGameBackend : IGameBackend
             return;
         }
 
-        var getIdRequest = new GetIdRequest
+        string identityId = !string.IsNullOrEmpty(PlayerId)
+            ? PlayerId
+            : CognitoGuestIdentityStore.Load(IdentityPoolId);
+        if (string.IsNullOrEmpty(identityId))
         {
-            IdentityPoolId = IdentityPoolId
-        };
-        GetIdResponse idResponse = await SendCognitoAsync<GetIdResponse>(
-            "AWSCognitoIdentityService.GetId",
-            JsonUtility.ToJson(getIdRequest));
-
-        if (string.IsNullOrWhiteSpace(idResponse.IdentityId))
-        {
-            throw new InvalidOperationException(
-                "AWS Cognito did not return a player identity.");
+            var getIdRequest = new GetIdRequest
+            {
+                IdentityPoolId = IdentityPoolId
+            };
+            GetIdResponse idResponse = await SendCognitoAsync<GetIdResponse>(
+                "AWSCognitoIdentityService.GetId",
+                JsonUtility.ToJson(getIdRequest));
+            identityId = idResponse.IdentityId;
+            if (!CognitoGuestIdentityStore.IsValid(
+                    IdentityPoolId, identityId))
+            {
+                throw new InvalidOperationException(
+                    "AWS Cognito did not return a valid player identity.");
+            }
         }
 
-        PlayerId = idResponse.IdentityId;
         var credentialsRequest = new GetCredentialsRequest
         {
-            IdentityId = PlayerId
+            IdentityId = identityId
         };
         GetCredentialsResponse credentialsResponse =
             await SendCognitoAsync<GetCredentialsResponse>(
                 "AWSCognitoIdentityService.GetCredentialsForIdentity",
                 JsonUtility.ToJson(credentialsRequest));
 
-        credentials = credentialsResponse.Credentials;
-        if (credentials == null ||
-            string.IsNullOrWhiteSpace(credentials.AccessKeyId))
+        AwsCredentials newCredentials = credentialsResponse.Credentials;
+        if (newCredentials == null ||
+            string.IsNullOrWhiteSpace(newCredentials.AccessKeyId) ||
+            string.IsNullOrWhiteSpace(newCredentials.SecretKey) ||
+            string.IsNullOrWhiteSpace(newCredentials.SessionToken))
         {
             throw new InvalidOperationException(
                 "AWS Cognito did not return temporary credentials.");
         }
+
+        credentials = newCredentials;
+        PlayerId = identityId;
+        CognitoGuestIdentityStore.Save(IdentityPoolId, identityId);
     }
 
     public async Task<string> StartRunAsync()
@@ -344,5 +356,48 @@ public sealed class AwsGameBackend : IGameBackend
     private sealed class LeaderboardResponse
     {
         public GameLeaderboardEntry[] entries;
+    }
+}
+
+// Anonymous Cognito identities are stable only when the client reuses its ID.
+// Store the ID, never the short-lived AWS credentials, in browser preferences.
+public static class CognitoGuestIdentityStore
+{
+    private const string KeyPrefix = "CrossyRoad.CognitoGuestIdentity.";
+
+    public static string Load(string identityPoolId)
+    {
+        string identityId = PlayerPrefs.GetString(KeyPrefix + identityPoolId, "");
+        return IsValid(identityPoolId, identityId) ? identityId : "";
+    }
+
+    public static void Save(string identityPoolId, string identityId)
+    {
+        if (!IsValid(identityPoolId, identityId))
+        {
+            throw new ArgumentException("Invalid Cognito guest identity.",
+                nameof(identityId));
+        }
+
+        PlayerPrefs.SetString(KeyPrefix + identityPoolId, identityId);
+        PlayerPrefs.Save();
+    }
+
+    public static bool IsValid(string identityPoolId, string identityId)
+    {
+        if (string.IsNullOrWhiteSpace(identityPoolId) ||
+            string.IsNullOrWhiteSpace(identityId))
+        {
+            return false;
+        }
+
+        int poolSeparator = identityPoolId.IndexOf(':');
+        int identitySeparator = identityId.IndexOf(':');
+        return poolSeparator > 0 &&
+            identitySeparator == poolSeparator &&
+            string.Equals(identityPoolId.Substring(0, poolSeparator),
+                identityId.Substring(0, identitySeparator),
+                StringComparison.Ordinal) &&
+            Guid.TryParse(identityId.Substring(identitySeparator + 1), out _);
     }
 }
