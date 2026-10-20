@@ -1,3 +1,6 @@
+using System;
+using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -22,10 +25,10 @@ namespace CrossyRoad.Tests.EditMode
         [Test]
         public void SavedIdentity_IsReusedForTheSamePool()
         {
-            CognitoGuestIdentityStore.Save(PoolA, Identity);
+            Save(PoolA, Identity);
 
-            Assert.That(CognitoGuestIdentityStore.Load(PoolA), Is.EqualTo(Identity));
-            Assert.That(CognitoGuestIdentityStore.Load(PoolB), Is.Empty);
+            Assert.That(Load(PoolA), Is.EqualTo(Identity));
+            Assert.That(Load(PoolB), Is.Empty);
         }
 
         [Test]
@@ -33,19 +36,38 @@ namespace CrossyRoad.Tests.EditMode
         {
             PlayerPrefs.SetString("CrossyRoad.CognitoGuestIdentity." + PoolA,
                 "ap-northeast-1:not-a-guid");
-            Assert.That(CognitoGuestIdentityStore.Load(PoolA), Is.Empty);
+            Assert.That(Load(PoolA), Is.Empty);
 
             PlayerPrefs.SetString("CrossyRoad.CognitoGuestIdentity." + PoolA,
                 "us-east-1:33333333-3333-4333-8333-333333333333");
-            Assert.That(CognitoGuestIdentityStore.Load(PoolA), Is.Empty);
+            Assert.That(Load(PoolA), Is.Empty);
         }
 
         [Test]
         public void Save_RejectsInvalidIdentity()
         {
-            Assert.Throws<System.ArgumentException>(() =>
-                CognitoGuestIdentityStore.Save(PoolA, "invalid"));
-            Assert.That(CognitoGuestIdentityStore.Load(PoolA), Is.Empty);
+            TargetInvocationException exception =
+                Assert.Throws<TargetInvocationException>(() =>
+                    Save(PoolA, "invalid"));
+            Assert.That(exception.InnerException, Is.TypeOf<ArgumentException>());
+            Assert.That(Load(PoolA), Is.Empty);
+        }
+
+        // Unity's asmdef test assembly cannot directly reference Assembly-CSharp.
+        private static Type StoreType => AppDomain.CurrentDomain.GetAssemblies()
+            .Select(assembly => assembly.GetType("CognitoGuestIdentityStore"))
+            .First(type => type != null);
+
+        private static string Load(string poolId)
+        {
+            return (string)StoreType.GetMethod("Load")
+                .Invoke(null, new object[] { poolId });
+        }
+
+        private static void Save(string poolId, string identityId)
+        {
+            StoreType.GetMethod("Save")
+                .Invoke(null, new object[] { poolId, identityId });
         }
     }
 }
