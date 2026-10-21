@@ -1,6 +1,6 @@
 # Cross The Road 系統架構
 
-本文件描述目前已上線的 AWS production 架構。舊版 Unity Gaming Services 資產仍保留於 repository，僅作為短期回復路徑，不是正式 Client 的預設後端。
+本文件描述目前已上線的 AWS production 架構。舊版 Unity Gaming Services 客戶端與 Cloud Code 部署路徑已從 repository 移除；WebGL 版本回復仍由私有 S3 快照提供。
 
 ## 執行架構
 

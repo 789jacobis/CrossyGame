@@ -128,8 +128,7 @@ Assets/
   Prefabs/          遊戲物件 Prefab
   Scenes/           遊戲場景
   Scripts/          遊戲、UI、音效與線上服務程式碼
-  CloudCode/        模組參照、產生的客戶端綁定與 Access Control 規則
-CrossyRoadServer/   共用驗證領域、AWS Lambda、舊版 Cloud Code 與測試
+CrossyRoadServer/   共用驗證領域、AWS Lambda 與測試
 infrastructure/     AWS CDK C# production 基礎設施與測試
 Packages/           Unity 套件清單與鎖定檔
 ProjectSettings/    Unity 專案設定

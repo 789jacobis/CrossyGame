@@ -1,8 +1,0 @@
-{
-  "name": "Unity.Services.CloudCode.GeneratedBindings",
-  "rootNamespace": "Unity.Services.CloudCode.GeneratedBindings",
-  "autoReferenced": true,
-  "references": [
-    "Unity.Services.CloudCode"
-  ]
-}

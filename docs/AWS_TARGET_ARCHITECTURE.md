@@ -7,7 +7,7 @@
 - 主要區域：`ap-northeast-1`（東京）。
 - 邊緣服務：Amazon CloudFront 為全球服務；日後若使用自訂網域，CloudFront 的 ACM 憑證建立於 `us-east-1`。
 - 計費原則：使用 Serverless 與按量計費資源；不建立需要持續按小時計費的運算或網路資源。
-- 現況：AWS 已是正式後端；UGS 資產暫時保留作為回復路徑。
+- 現況：AWS 已是正式後端；舊版 UGS 客戶端與 Cloud Code 部署路徑已移除。
 
 ## 架構目標
 
@@ -221,7 +221,7 @@ public interface IGameBackend
 
 - `AwsGameBackend`：包裝 Cognito 身分、SigV4 HTTP Client 與 AWS API DTO。
 - `IGameBackend`：讓遊戲流程不直接依賴 AWS SDK 或供應商資料模型。
-- 舊版 UGS 程式與部署資產暫時保留，但正式 `OnlineServicesManager` 固定使用 AWS。
+- 正式 `OnlineServicesManager` 固定使用 AWS；舊版 UGS 程式與部署資產在切換後的穩定觀察中移除。
 
 WebGL 的 Cognito 憑證取得與 SigV4 簽署需要先做最小技術驗證；驗證結果將決定採用 Unity C# 實作或 `.jslib` JavaScript bridge，但不改變 API 與安全邊界。
 
@@ -231,7 +231,7 @@ WebGL 的 Cognito 憑證取得與 SigV4 簽署需要先做最小技術驗證；�
 - Serverless 資源沒有請求時不產生常駐運算費；排程停用只會降低濫用風險，並非主要省錢手段。
 - 正式資料與 Web Bucket 不會被一般 `cdk destroy` 刪除。
 - 部署角色只能由指定 GitHub repository、branch／environment 透過 OIDC Assume Role。
-- itch.io 與 UGS 在切換後的觀察期內仍保留作為回復路徑。
+- WebGL 發布前快照保留 30 天，可從 GitHub Actions 回復上一版前端；舊版 UGS 後端不再作為回復路徑。
 
 ## 遷移與切換條件
 
@@ -242,7 +242,7 @@ WebGL 的 Cognito 憑證取得與 SigV4 簽署需要先做最小技術驗證；�
 5. ✅ 實作 `AwsGameBackend` 與 SigV4，正式 Client 透過 `IGameBackend` 使用 AWS。
 6. ✅ 已驗證 Cognito 身分、回合、提交、排行榜、重複提交與未簽章拒絕案例。
 7. ✅ 已通過正式 Web Build、全新瀏覽器、安全邊界、成本預警與健康檢查；CloudWatch/SNS 警報已部署。
-8. ✅ 正式 Client 已切換至 AWS；UGS 暫時保留作為回復窗口。
+8. ✅ 正式 Client 已切換至 AWS；舊版 UGS 客戶端與 Cloud Code 部署資產已移除。
 
 ## 不在第一版範圍
 
