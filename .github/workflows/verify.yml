@@ -22,6 +22,10 @@ jobs:
         shell: pwsh
         run: ./infrastructure/test/Test-WebBuildPreparation.ps1
 
+      - name: Test WebGL cleanup dry-run
+        shell: pwsh
+        run: ./infrastructure/test/Test-WebBuildCleanup.ps1
+
       - name: Set up .NET SDKs
         uses: actions/setup-dotnet@v4
         with:

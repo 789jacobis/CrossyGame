@@ -7,7 +7,12 @@ on:
     paths:
       - CrossyRoadServer/AwsBackend/**
       - CrossyRoadServer/Domain/**
-      - infrastructure/**
+      - infrastructure/src/**
+      - infrastructure/cdk.json
+      - infrastructure/CrossyRoad.Aws.sln
+      - infrastructure/Directory.Packages.props
+      - infrastructure/package.json
+      - infrastructure/package-lock.json
       - .github/workflows/deploy-aws.yml
 
 permissions:
