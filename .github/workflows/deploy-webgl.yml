@@ -167,29 +167,28 @@ jobs:
         run: curl --fail --silent --show-error --retry 5 --retry-delay 5 "${{ steps.web.outputs.url }}/index.html" > /dev/null
 
       - name: Verify published WebGL cache headers
-        shell: pwsh
+        shell: bash
         run: |
-          $url = "${{ steps.web.outputs.url }}"
-          $index = Invoke-WebRequest "$url/index.html"
-          if ($index.Headers["Cache-Control"] -notmatch "no-cache") {
-            throw "index.html must be revalidated by browsers."
-          }
+          set -euo pipefail
+          url="${{ steps.web.outputs.url }}"
+          index_headers="$(mktemp)"
+          index_file="$(mktemp)"
+          trap 'rm -f "$index_headers" "$index_file"' EXIT
 
-          $assets = [regex]::Matches(
-            $index.Content,
-            '/Release\.[a-z.]+\.[a-f0-9]{64}\.(?:js|br)') |
-            ForEach-Object { $_.Value }
-          if ($assets.Count -ne 4) {
-            throw "Expected four content-addressed WebGL assets in index.html."
-          }
+          curl --fail --silent --show-error --retry 5 --retry-all-errors --retry-delay 5 \
+            --dump-header "$index_headers" --output "$index_file" "$url/index.html"
+          grep -Eiq '^cache-control:.*no-cache' "$index_headers"
 
-          foreach ($asset in $assets) {
-            $response = Invoke-WebRequest "$url/Build$asset" -Method Head
-            if ($response.Headers["Cache-Control"] -notmatch "immutable") {
-              throw "Expected immutable caching for $asset."
-            }
-            if ($asset.EndsWith(".br") -and
-                $response.Headers["Content-Encoding"] -ne "br") {
-              throw "Expected Brotli content encoding for $asset."
-            }
-          }
+          mapfile -t assets < <(grep -oE '/Release\.[a-z.]+\.[a-f0-9]{64}\.(js|br)' "$index_file")
+          if [ "${#assets[@]}" -ne 4 ]; then
+            echo "Expected four content-addressed WebGL assets in index.html." >&2
+            exit 1
+          fi
+
+          for asset in "${assets[@]}"; do
+            headers="$(curl --fail --silent --show-error --head --retry 5 --retry-all-errors --retry-delay 5 "$url/Build$asset")"
+            grep -Eiq '^cache-control:.*immutable' <<< "$headers"
+            if [[ "$asset" == *.br ]]; then
+              grep -Eiq '^content-encoding:[[:space:]]*br' <<< "$headers"
+            fi
+          done
