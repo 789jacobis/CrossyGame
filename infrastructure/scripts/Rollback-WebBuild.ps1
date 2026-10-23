@@ -10,6 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+. "$PSScriptRoot/WebBuildAssetReferences.ps1"
 
 if (-not $BucketName -or -not $RollbackBucketName -or
     -not $DistributionId -or -not $GameUrl) {
@@ -48,12 +49,23 @@ if (-not $ReleaseId) {
         throw "Failed to list rollback releases."
     }
 
-    $ReleaseId = @(
+    $availableIds = @(
         $prefixOutput -split '\s+' |
             Where-Object { $_ -and $_ -ne "None" } |
             ForEach-Object { $_.TrimEnd('/') } |
             Sort-Object -Descending
-    ) | Select-Object -First 1
+    )
+
+    foreach ($candidateId in $availableIds) {
+        & aws s3api head-object `
+            --bucket $RollbackBucketName `
+            --key "$candidateId/index.html" `
+            --output json 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            $ReleaseId = $candidateId
+            break
+        }
+    }
 }
 
 if (-not $ReleaseId) {
@@ -70,26 +82,63 @@ if ($LASTEXITCODE -ne 0) {
     throw "Rollback release is incomplete or does not exist: $ReleaseId"
 }
 
+$snapshotIndexOutput = & aws s3 cp `
+    "s3://$RollbackBucketName/$ReleaseId/index.html" `
+    - --only-show-errors
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to read rollback index.html: $ReleaseId"
+}
+
+$snapshotIndex = $snapshotIndexOutput -join "`n"
+$snapshotAssets = @(Get-ReferencedBuildKeys `
+    -IndexHtml $snapshotIndex `
+    -Label "Rollback $ReleaseId index.html")
+foreach ($key in $snapshotAssets) {
+    & aws s3api head-object `
+        --bucket $RollbackBucketName `
+        --key "$ReleaseId/$key" `
+        --output json 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Rollback release is missing $key; live release was not changed."
+    }
+}
+
 $currentSnapshotId =
     (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ") +
     "-pre-rollback"
 
 Write-Host "Saving the current live release as $currentSnapshotId"
-& aws s3 sync "s3://$BucketName" `
-    "s3://$RollbackBucketName/$currentSnapshotId" `
-    --only-show-errors
-
-if ($LASTEXITCODE -ne 0) {
-    throw "Failed to preserve the current live release before rollback."
-}
+& "$PSScriptRoot/Save-WebBuildSnapshot.ps1" `
+    -BucketName $BucketName `
+    -RollbackBucketName $RollbackBucketName `
+    -ReleaseId $currentSnapshotId
 
 Write-Host "Restoring rollback release $ReleaseId"
 & aws s3 sync "s3://$RollbackBucketName/$ReleaseId" `
     "s3://$BucketName" `
+    --exclude "Build/*" `
+    --exclude "index.html" `
     --only-show-errors
 
 if ($LASTEXITCODE -ne 0) {
-    throw "Failed to restore rollback release $ReleaseId."
+    throw "Failed to restore rollback support files for $ReleaseId."
+}
+
+foreach ($key in $snapshotAssets) {
+    & aws s3 cp "s3://$RollbackBucketName/$ReleaseId/$key" `
+        "s3://$BucketName/$key" `
+        --only-show-errors
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to restore rollback asset: $key"
+    }
+}
+
+& aws s3 cp "s3://$RollbackBucketName/$ReleaseId/index.html" `
+    "s3://$BucketName/index.html" `
+    --only-show-errors
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to restore rollback index.html."
 }
 
 # Snapshots created before content-addressed assets used fixed filenames with

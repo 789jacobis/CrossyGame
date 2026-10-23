@@ -66,13 +66,10 @@ try {
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Archiving the current release as $ReleaseId"
-        & aws s3 sync "s3://$BucketName" `
-            "s3://$RollbackBucketName/$ReleaseId" `
-            --only-show-errors
-
-        if ($LASTEXITCODE -ne 0) {
-            throw "Failed to archive the current WebGL release."
-        }
+        & "$PSScriptRoot/Save-WebBuildSnapshot.ps1" `
+            -BucketName $BucketName `
+            -RollbackBucketName $RollbackBucketName `
+            -ReleaseId $ReleaseId
     }
     else {
         Write-Host "No existing release was found; skipping the rollback snapshot."

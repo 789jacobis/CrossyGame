@@ -26,6 +26,14 @@ jobs:
         shell: pwsh
         run: ./infrastructure/test/Test-WebBuildCleanup.ps1
 
+      - name: Test minimal WebGL rollback snapshots
+        shell: pwsh
+        run: ./infrastructure/test/Test-WebBuildSnapshot.ps1
+
+      - name: Test WebGL rollback restoration
+        shell: pwsh
+        run: ./infrastructure/test/Test-WebBuildRollback.ps1
+
       - name: Set up .NET SDKs
         uses: actions/setup-dotnet@v4
         with:
