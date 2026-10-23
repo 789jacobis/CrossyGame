@@ -253,6 +253,13 @@ public sealed class CrossyRoadMonitoringStack : CrossyRoadStack
             Subscribers = Subscribers()
         };
 
+        CfnBudget.CostTypesProperty PreCreditCosts() => new()
+        {
+            IncludeCredit = false,
+            IncludeRefund = false
+        };
+
+        // This account-wide guardrail also catches untagged and non-game costs.
         _ = new CfnBudget(this, "MonthlyCostBudget", new CfnBudgetProps
         {
             Budget = new CfnBudget.BudgetDataProperty
@@ -260,6 +267,35 @@ public sealed class CrossyRoadMonitoringStack : CrossyRoadStack
                 BudgetName = $"{settings.ProjectName}-{settings.EnvironmentName}-monthly",
                 BudgetType = "COST",
                 TimeUnit = "MONTHLY",
+                CostTypes = PreCreditCosts(),
+                BudgetLimit = new CfnBudget.SpendProperty
+                {
+                    Amount = 5,
+                    Unit = "USD"
+                }
+            },
+            NotificationsWithSubscribers = new[]
+            {
+                AlertAt(1),
+                AlertAt(3),
+                AlertAt(5)
+            }
+        });
+
+        // The Project cost-allocation tag must be active in Billing. Some
+        // shared or untaggable charges are covered only by the account budget.
+        _ = new CfnBudget(this, "ProjectCostBudget", new CfnBudgetProps
+        {
+            Budget = new CfnBudget.BudgetDataProperty
+            {
+                BudgetName = $"{settings.ProjectName}-{settings.EnvironmentName}-project-monthly",
+                BudgetType = "COST",
+                TimeUnit = "MONTHLY",
+                CostTypes = PreCreditCosts(),
+                CostFilters = new Dictionary<string, string[]>
+                {
+                    ["TagKeyValue"] = [$"user:Project${settings.ProjectName}"]
+                },
                 BudgetLimit = new CfnBudget.SpendProperty
                 {
                     Amount = 5,

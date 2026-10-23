@@ -321,7 +321,7 @@ public sealed class InfrastructureTests
     }
 
     [Test]
-    public void MonitoringStack_CreatesFiveDollarBudgetWithThreeAlerts()
+    public void MonitoringStack_CreatesPreCreditAccountAndProjectBudgets()
     {
         var app = new App();
         var data = new CrossyRoadDataStack(
@@ -349,18 +349,75 @@ public sealed class InfrastructureTests
             api);
         Template template = Template.FromStack(stack);
 
+        template.ResourceCountIs("AWS::Budgets::Budget", 2);
         template.HasResourceProperties(
             "AWS::Budgets::Budget",
             Match.ObjectLike(new Dictionary<string, object>
             {
                 ["Budget"] = Match.ObjectLike(new Dictionary<string, object>
                 {
+                    ["BudgetName"] = "CrossyRoad-production-monthly",
                     ["BudgetLimit"] = new Dictionary<string, object>
                     {
                         ["Amount"] = 5,
                         ["Unit"] = "USD"
                     },
-                    ["TimeUnit"] = "MONTHLY"
+                    ["TimeUnit"] = "MONTHLY",
+                    ["CostTypes"] = Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["IncludeCredit"] = false,
+                        ["IncludeRefund"] = false
+                    })
+                }),
+                ["NotificationsWithSubscribers"] = Match.ArrayWith(
+                [
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Notification"] = Match.ObjectLike(
+                            new Dictionary<string, object>
+                            {
+                                ["Threshold"] = 1
+                            })
+                    }),
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Notification"] = Match.ObjectLike(
+                            new Dictionary<string, object>
+                            {
+                                ["Threshold"] = 3
+                            })
+                    }),
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Notification"] = Match.ObjectLike(
+                            new Dictionary<string, object>
+                            {
+                                ["Threshold"] = 5
+                            })
+                    })
+                ])
+            }));
+        template.HasResourceProperties(
+            "AWS::Budgets::Budget",
+            Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Budget"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["BudgetName"] = "CrossyRoad-production-project-monthly",
+                    ["BudgetLimit"] = new Dictionary<string, object>
+                    {
+                        ["Amount"] = 5,
+                        ["Unit"] = "USD"
+                    },
+                    ["CostTypes"] = Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["IncludeCredit"] = false,
+                        ["IncludeRefund"] = false
+                    }),
+                    ["CostFilters"] = new Dictionary<string, object>
+                    {
+                        ["TagKeyValue"] = new[] { "user:Project$CrossyRoad" }
+                    }
                 }),
                 ["NotificationsWithSubscribers"] = Match.ArrayWith(
                 [
