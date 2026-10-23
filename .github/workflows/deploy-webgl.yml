@@ -16,7 +16,9 @@ on:
       - ProjectSettings/**
       - .github/workflows/deploy-webgl.yml
       - infrastructure/scripts/Publish-WebBuild.ps1
+      - infrastructure/scripts/Prepare-WebBuild.ps1
       - infrastructure/scripts/Rollback-WebBuild.ps1
+      - infrastructure/test/Test-WebBuildPreparation.ps1
 
 permissions:
   checks: write
@@ -38,6 +40,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Test WebGL cache-busting preparation
+        shell: pwsh
+        run: ./infrastructure/test/Test-WebBuildPreparation.ps1
 
       - name: Cache Unity Library
         uses: actions/cache@v4
@@ -159,3 +165,31 @@ jobs:
       - name: Verify public game
         shell: bash
         run: curl --fail --silent --show-error --retry 5 --retry-delay 5 "${{ steps.web.outputs.url }}/index.html" > /dev/null
+
+      - name: Verify published WebGL cache headers
+        shell: pwsh
+        run: |
+          $url = "${{ steps.web.outputs.url }}"
+          $index = Invoke-WebRequest "$url/index.html"
+          if ($index.Headers["Cache-Control"] -notmatch "no-cache") {
+            throw "index.html must be revalidated by browsers."
+          }
+
+          $assets = [regex]::Matches(
+            $index.Content,
+            '/Release\.[a-z.]+\.[a-f0-9]{64}\.(?:js|br)') |
+            ForEach-Object { $_.Value }
+          if ($assets.Count -ne 4) {
+            throw "Expected four content-addressed WebGL assets in index.html."
+          }
+
+          foreach ($asset in $assets) {
+            $response = Invoke-WebRequest "$url/Build$asset" -Method Head
+            if ($response.Headers["Cache-Control"] -notmatch "immutable") {
+              throw "Expected immutable caching for $asset."
+            }
+            if ($asset.EndsWith(".br") -and
+                $response.Headers["Content-Encoding"] -ne "br") {
+              throw "Expected Brotli content encoding for $asset."
+            }
+          }

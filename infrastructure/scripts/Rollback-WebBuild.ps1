@@ -86,11 +86,67 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Restoring rollback release $ReleaseId"
 & aws s3 sync "s3://$RollbackBucketName/$ReleaseId" `
     "s3://$BucketName" `
-    --delete `
     --only-show-errors
 
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to restore rollback release $ReleaseId."
+}
+
+# Snapshots created before content-addressed assets used fixed filenames with
+# immutable caching. Give those restored URLs a fresh browser cache key.
+$stagingRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../Builds"))
+New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
+$legacyIndexPath = Join-Path $stagingRoot ("RollbackIndex-" + [guid]::NewGuid().ToString("N") + ".html")
+
+try {
+    & aws s3 cp "s3://$BucketName/index.html" $legacyIndexPath --only-show-errors
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to inspect restored index.html."
+    }
+
+    $index = [System.IO.File]::ReadAllText($legacyIndexPath)
+    if ($index.Contains('/Release.loader.js')) {
+        foreach ($asset in @(
+            "Release.loader.js",
+            "Release.data.br",
+            "Release.framework.js.br",
+            "Release.wasm.br"
+        )) {
+            $pattern = '"/' + [regex]::Escape($asset) + '(?:\?v=[^"]*)?"'
+            if ([regex]::Matches($index, $pattern).Count -ne 1) {
+                throw "Restored index.html does not contain one $asset reference."
+            }
+
+            $index = [regex]::Replace(
+                $index,
+                $pattern,
+                '"/' + $asset + '?v=' + $currentSnapshotId + '"')
+        }
+
+        [System.IO.File]::WriteAllText(
+            $legacyIndexPath,
+            $index,
+            [System.Text.UTF8Encoding]::new($false))
+
+        & aws s3 cp $legacyIndexPath "s3://$BucketName/index.html" `
+            --content-type "text/html; charset=utf-8" `
+            --cache-control "no-cache, max-age=0, must-revalidate" `
+            --only-show-errors
+
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to cache-bust the legacy rollback index.html."
+        }
+    }
+}
+finally {
+    $safePrefix = $stagingRoot + [System.IO.Path]::DirectorySeparatorChar + "RollbackIndex-"
+    if (-not $legacyIndexPath.StartsWith($safePrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove an unexpected rollback index path: $legacyIndexPath"
+    }
+
+    if (Test-Path -LiteralPath $legacyIndexPath) {
+        Remove-Item -LiteralPath $legacyIndexPath -Force
+    }
 }
 
 $invalidationId = & aws cloudfront create-invalidation `

@@ -160,6 +160,8 @@ ProjectSettings/    Unity 專案設定
 
 GitHub Actions 需要 repository secrets `UNITY_LICENSE`、`UNITY_EMAIL`、`UNITY_PASSWORD`。`UNITY_LICENSE` 是本機 Unity Hub 啟用後的 `C:\ProgramData\Unity\Unity_lic.ulf` 內容。設定 repository variable `ENABLE_WEBGL_AUTO_DEPLOY=true` 後，`main` 分支中的 Unity 專案檔案變更會自動建置並發布；未設定時仍可從 Actions 頁面手動執行。每次發布前會將目前版本保存到獨立的私有 S3 rollback bucket 並保留 30 天；需要回復時可從 GitHub Actions 手動執行 `Roll Back WebGL`，留空 snapshot ID 即回復最近的上一版。
 
+發布時會以內容雜湊為 WebGL loader、data、framework 與 wasm 檔案產生新檔名，再更新 `index.html` 引用；首頁需重新驗證，而內容不變的建置檔可安全地長期快取。舊版檔案保留在 S3，避免仍開著舊頁面的玩家載入到不存在的檔案；回復舊版時也不刪除這些檔案。
+
 WebGL workflow 會先執行 Unity EditMode 測試，檢查正式 Scene、必要根物件、Prefab 遺失腳本與難度設定。測試失敗時不會建置或部署；測試結果會保留為 GitHub Actions artifact 14 天。Pull Request 只執行測試，不發布正式版本。
 
 ## 後端取捨與安全性
