@@ -45,7 +45,12 @@ if ($ReleaseId -notmatch '^[A-Za-z0-9._-]+$') {
     throw "ReleaseId may contain only letters, numbers, dots, underscores, and hyphens."
 }
 
-$stagingRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../Builds"))
+$stagingRoot = if ($env:RUNNER_TEMP) {
+    [System.IO.Path]::GetFullPath((Join-Path $env:RUNNER_TEMP "CrossyRoadWebPublish"))
+}
+else {
+    [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../Builds"))
+}
 New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 $preparedPath = Join-Path $stagingRoot ("WebPublish-" + [guid]::NewGuid().ToString("N"))
 
